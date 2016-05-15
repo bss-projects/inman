@@ -1,0 +1,97 @@
+CREATE OR REPLACE FUNCTION list_vendor_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_vendor = []
+vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_vendor_freeradius'")
+if res:
+ for row in res:
+  l_vendor = json.loads(row['view_data'])
+  uid = row['id']
+ if vendorname not in l_vendor:
+  l_vendor.append(vendorname)
+  l_vendor = json.dumps(l_vendor)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
+else:
+ l_vendor.append(vendorname)
+ l_vendor = json.dumps(l_vendor)
+ res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_vendor_freeradius', '"+l_vendor+"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER list_vendor_freeradius
+AFTER INSERT ON vendor_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE list_vendor_freeradius();
+
+
+CREATE OR REPLACE FUNCTION delete_vendor_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_vendor = []
+vendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_vendor_freeradius'")
+if res:
+ for row in res:
+  l_vendor = json.loads(row['view_data'])
+  uid = row['id']
+ if vendorname in l_vendor:
+  l_vendor.remove(vendorname)
+  l_vendor = json.dumps(l_vendor)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER delete_vendor_freeradius
+AFTER DELETE ON vendor_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE delete_vendor_freeradius();
+
+
+CREATE OR REPLACE FUNCTION update_vendor_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_vendor = []
+vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_vendor_freeradius'")
+if res:
+ for row in res:
+  l_vendor = json.loads(row['view_data'])
+  uid = row['id']
+ if OLDvendorname in l_vendor:
+  l_vendor.remove(OLDvendorname)
+  l_vendor.append(vendorname)
+  l_vendor = json.dumps(l_vendor)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER update_vendor_freeradius
+AFTER UPDATE ON vendor_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE update_vendor_freeradius();
