@@ -1,0 +1,32 @@
+CREATE OR REPLACE FUNCTION list_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_user = []
+
+username = json.loads(TD['new']['user_info'])['username']
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_user_freeradius'")
+
+if res:
+ for row in res:
+  l_user = json.loads(row['view_data'])
+  uid = row['id']
+ if username not in l_user:
+  l_user.append(username)
+  l_user = json.dumps(l_user)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_user +"') WHERE id = "+ str(uid) +"")
+else:
+ l_user.append(username)
+ l_user = json.dumps(l_user)
+ res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_user_freeradius', '"+l_user+"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER list_user_freeradius
+AFTER INSERT ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE list_user_freeradius();

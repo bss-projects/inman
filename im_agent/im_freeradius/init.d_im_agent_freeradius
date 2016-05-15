@@ -1,0 +1,107 @@
+#!/bin/sh -e
+
+DAEMON="im_agentside_freeradius.py" #ligne de commande du programme
+DAEMON_dir="/opt/inman/agent_freeradius" #ligne de commande du programme
+daemon_OPT=""  #argument à utiliser par le programme
+DAEMONUSER="root" #utilisateur du programme
+daemon_NAME="IM Agent Freeradius" #Nom du programme (doit être identique à l'exécutable)
+daemon_NAME_short="IM Agent Freera" #Nom du programme (doit être identique à l'exécutable)
+
+pid_path="/var/run/im/im_agent_freeradius.pid"
+agent_alive_pid_path="/var/run/im/im_agent_alive_freeradius.pid"
+
+DAEMON_websoc="im_agentside_websocket_freeradius.py"
+daemon_WEBSOCKET="IM Websocket Freeradius"
+daemon_WEBSOCKET_short="IM Websocket Fr"
+
+pid_path_WEBSOCKET="/var/run/im/im_agent_websocket_freeradius.pid"
+pid_path_live_WEBSOCKET="/var/run/im/im_agent_websocket_live_freeradius.pid"
+pid_path_rpc_WEBSOCKET="/var/run/im/im_agent_websocket_rpc_freeradius.pid"
+pid_path_streamfile_WEBSOCKET="/var/run/im/im_agent_streamfile_freeradius.pid"
+
+PATH="/sbin:/bin:/usr/sbin:/usr/bin" #Ne pas toucher
+
+test -x "$DAEMON_dir/$DAEMON" || exit 0
+
+. /lib/lsb/init-functions
+
+d_start_agent () {
+        log_daemon_msg "Starting system $daemon_NAME Daemon"
+        start-stop-daemon --background --start --quiet --make-pidfile --pidfile $pid_path --chdir $DAEMON_dir --chuid $DAEMONUSER --exec $DAEMON -- $daemon_OPT
+        log_end_msg $?
+}
+
+d_start_websoc () {
+        log_daemon_msg "Starting system $daemon_WEBSOCKET Daemon"
+        start-stop-daemon --background --start --quiet --make-pidfile --pidfile $pid_path_WEBSOCKET --chdir $DAEMON_dir --chuid $DAEMONUSER --exec $DAEMON_websoc -- $daemon_OPT
+        log_end_msg $?
+}
+
+d_start () {
+		if [ ! -d "/var/run/im" ]; then
+			mkdir /var/run/im
+		fi
+        d_start_agent
+        d_start_websoc
+#       start-stop-daemon --background --start --quiet --make-pidfile --pidfile $pid_path --chdir $DAEMON_dir --chuid $DAEMONUSER --$
+#        log_end_msg $?
+}
+
+
+d_stop_agent () {
+        log_daemon_msg "Stopping system $daemon_NAME Daemon"
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $agent_alive_pid_path
+        log_end_msg $?
+}
+
+
+d_stop_websoc () {
+        log_daemon_msg "Stopping system $daemon_WEBSOCKET Daemon"
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path_WEBSOCKET
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path_live_WEBSOCKET
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path_rpc_WEBSOCKET
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path_streamfile_WEBSOCKET
+        log_end_msg $?
+}
+
+
+d_stop () {
+        d_stop_agent
+        d_stop_websoc
+        log_end_msg $?
+}
+
+case "$1" in
+
+        start|stop)
+                d_${1}
+                ;;
+
+        restart|reload|force-reload)
+                        d_stop
+                        d_start
+                ;;
+
+        force-stop)
+               d_stop
+                killall -q $daemon_NAME || true
+                sleep 2
+                killall -q -9 $daemon_NAME || true
+                ;;
+
+        status)
+				status_of_proc -p $pid_path "$daemon_NAME_short" "$daemon_NAME"
+				status_of_proc -p $agent_alive_pid_path "$daemon_NAME_short" "$daemon_NAME Alive com"
+
+				status_of_proc -p $pid_path_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET"
+				status_of_proc -p $pid_path_live_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET Live com"
+				status_of_proc -p $pid_path_rpc_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET RPC com" && exit 0 || exit $?
+#                status_of_proc "$daemon_NAME" "$DAEMON" "system-wide $daemon_NAME" && exit 0 || exit $?
+                ;;
+        *)
+                echo "Usage: /etc/init.d/$daemon_NAME {start|stop|force-stop|restart|reload|force-reload|status}"
+                exit 1
+                ;;
+esac
+exit 0

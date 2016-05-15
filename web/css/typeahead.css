@@ -1,0 +1,127 @@
+/*
+container {
+  width: 800px;
+  margin: 50px auto;
+}
+
+typeahead-wrapper {
+ /* display: block;
+  margin: 50px 0;*/
+/*
+}
+
+tt-dropdown-menu {
+  background-color: #fff;
+  border: 1px solid #000;
+}
+
+tt-suggestion.tt-cursor {
+  background-color: #ccc;
+}
+
+triggered-events {
+  float: right;
+  width: 500px;
+  height: 300px;
+}
+*/
+
+.container {
+    margin: 0 auto;
+    max-width: 750px;
+    text-align: center;
+}
+
+.tt-menu, .gist {
+    text-align: left;
+}
+
+.twitter-typeahead {
+	width: 100%;
+}
+
+.typeahead, .tt-query, .tt-hint {
+    display: block;
+  width: 100%;
+  height: 34px;
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 1.428571429;
+  color: #555;
+  background-color: #fff;
+  background-image: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
+          box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
+  -webkit-transition: border-color ease-in-out .15s, box-shadow ease-in-out .15s;
+          transition: border-color ease-in-out .15s, box-shadow ease-in-out .15s;
+}
+
+.typeahead {
+    background-color: #FFFFFF;
+}
+
+.typeahead:focus {
+    border-color: #66afe9;
+  outline: 0;
+  -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, .6);
+          box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, .6);
+}
+
+.typeahead:-moz-placeholder {
+  color: #999;
+}
+.typeahead::-moz-placeholder {
+  color: #999;
+  opacity: 1;
+}
+.typeahead:-ms-input-placeholder {
+  color: #999;
+}
+.typeahead::-webkit-input-placeholder {
+  color: #999;
+}
+
+.tt-query {
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.075) inset;
+}
+
+.tt-hint {
+    color: #999999;
+}
+
+.tt-menu {
+    background-color: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 8px 8px 8px 8px;
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+    margin: 12px 0;
+    padding: 8px 0;
+    width: 422px;
+}
+
+.tt-suggestion {
+    font-size: 18px;
+    line-height: 24px;
+    padding: 3px 20px;
+}
+
+.tt-suggestion:hover {
+    background-color: #0097CF;
+    color: #FFFFFF;
+    cursor: pointer;
+}
+
+.tt-suggestion.tt-cursor {
+    background-color: #0097CF;
+    color: #FFFFFF;
+}
+
+.tt-suggestion p {
+    margin: 0;
+}
+
+.gist {
+    font-size: 14px;
+}

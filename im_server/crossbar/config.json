@@ -1,0 +1,99 @@
+{
+	"controller":
+	{
+	},
+	"workers":
+	[
+	{
+		"type": "router",
+		"realms":
+		[
+			{
+				"name": "inman",
+				"roles":
+				[
+					{
+						"name": "log",
+						"permissions":
+						[
+							{
+								"uri": "im.freeradius.live.log",
+								"publish": true,
+								"subscribe": true,
+								"call": false,
+								"register": false
+							},
+							{
+								"uri": "im.freeradius.file.log",
+								"publish": false,
+								"subscribe": false,
+								"call": true,
+								"register": true
+							},
+							{
+								"uri": "im.supervisor.scp",
+								"publish": true,
+								"subscribe": true,
+								"call": false,
+								"register": false
+							},
+							{
+								"uri": "im.supervisor.status.*",
+								"publish": true,
+								"subscribe": true,
+								"call": false,
+								"register": false
+							},
+							{
+								"uri": "im.supervisor.parser",
+								"publish": true,
+								"subscribe": true,
+								"call": false,
+								"register": false
+							}
+						]
+					}
+				]
+			}
+		],
+		"transports":
+		[
+			{
+				"type": "web",
+				"endpoint":
+				{
+					"type": "tcp",
+					"port": 8080
+				},
+				"paths":
+				{
+					"/":
+					{
+						"type": "static",
+						"directory": ".."
+					},
+					"ws":
+					{
+						"type": "websocket",
+						"auth":
+						{
+							"wampcra":
+							{
+								"type": "static",
+								"users":
+								{
+									"admin":
+									{
+										"secret": "pass",
+										"role": "log"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		]
+	}
+	]
+}

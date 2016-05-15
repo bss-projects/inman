@@ -1,0 +1,73 @@
+CREATE OR REPLACE FUNCTION list_agent_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_agent = []
+
+agent_info = json.loads(TD['new']['agent_info'])
+
+if agent_info['plugin'] == 'freeradius':
+ agent_name = agent_info['agent_name']
+
+ res = plpy.execute("SELECT * FROM matview WHERE name = 'list_agent_freeradius'")
+
+ if res:
+  for row in res:
+   l_agent = json.loads(row['view_data'])
+   uid = row['id']
+  if agent_name not in l_agent:
+   l_agent.append(agent_name)
+   l_agent = json.dumps(l_agent)
+   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_agent +"') WHERE id = "+ str(uid) +"")
+ else:
+  l_agent.append(agent_name)
+  l_agent = json.dumps(l_agent)
+  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_agent_freeradius', '"+l_agent+"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER list_agent_freeradius
+AFTER INSERT ON agent
+FOR EACH ROW
+EXECUTE PROCEDURE list_agent_freeradius();
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION delete_agent_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_agent = []
+
+agent_info = json.loads(TD['old']['agent_info'])
+
+if agent_info['plugin'] == 'freeradius':
+ agent_name = agent_info['agent_name']
+
+ res = plpy.execute("SELECT * FROM matview WHERE name = 'list_agent_freeradius'")
+
+ if res:
+  for row in res:
+   l_agent = json.loads(row['view_data'])
+   uid = row['id']
+  if agent_name in l_agent:
+   l_agent.remove(agent_name)
+   l_agent = json.dumps(l_agent)
+   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_agent +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER delete_agent_freeradius
+AFTER DELETE ON agent
+FOR EACH ROW
+EXECUTE PROCEDURE delete_agent_freeradius();

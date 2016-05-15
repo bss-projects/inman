@@ -1,0 +1,15 @@
+#
+#    Global options for all logfiles
+#
+weekly
+rotate 15
+missingok
+compress
+notifempty
+
+#
+#  The main server log
+#
+/var/log/freeradius/radius.log.* {
+        copy
+}

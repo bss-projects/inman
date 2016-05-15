@@ -1,0 +1,27 @@
+# You can use this to rotate the /var/log/radius/* files, simply copy
+# it to /etc/logrotate.d/radiusd
+
+#
+#    Global options for all logfiles
+#
+monthly
+rotate 12
+size 50M
+missingok
+compress
+delaycompress
+notifempty
+
+#
+#  The main freeradius agent log
+#
+/var/log/im_freeradius/im.log {
+        copytruncate
+}
+
+#
+#  The websocket freeradius agent log
+#
+/var/log/im_freeradius/websocket.log {
+        copytruncate
+}
