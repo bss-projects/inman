@@ -1,0 +1,21 @@
+python {
+        module = rlm_im_freeradius
+
+        mod_instantiate = ${.module}
+        mod_detach = ${.module}
+
+        mod_authorize = ${.module}
+        func_authorize = authorize
+
+        mod_authenticate = ${.module}
+        func_authenticate = authenticate
+
+        mod_preacct = ${.module}
+        mod_accounting = ${.module}
+        mod_checksimul = ${.module}
+        mod_pre_proxy = ${.module}
+        mod_post_proxy = ${.module}
+        mod_post_auth = ${.module}
+        mod_recv_coa = ${.module}
+        mod_send_coa = ${.module}
+}

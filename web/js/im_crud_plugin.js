@@ -1,6 +1,5 @@
 $(function()
 {
-
 	var agent_info = new Array();
 	var plugin_countnb_agent = new Array();
 

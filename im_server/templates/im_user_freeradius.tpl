@@ -37,12 +37,21 @@
 			</div>
 
 			<div class="modal-body">
+				<div id="edit_alert_input" class="alert alert-warning" style="display: none;">
+
+				</div>
 				<form class="form-horizontal" role="form" name="edit_user_freeradius" action="im_crud_user_freeradius/edit" method="post">
+
+					<div id="edit_expiration_status" class="form-group" style="display: none;">
+						<label class="col-sm-3 label label-warning label-pill">{{ _('Account expired') }}</label>
+						<div class="col-sm-9"></div>
+					</div>
 
 					<div class="form-group">
 						<label for="edit_radiusname_user_freeradius" class="col-sm-3 control-label">{{ _('Radius name') }}</label>
 						<div class="col-sm-9">
 							<input type="edit_radiusname_user_freeradius" class="form-control" id="edit_radiusname_user_freeradius" name="edit_radiusname_user_freeradius" placeholder="{{ _('Radius name') }}">
+							<input type="hidden" id="edit_previous_radiusname_user_freeradius" name="edit_previous_radiusname_user_freeradius">
 						</div>
 					</div>
 
@@ -56,6 +65,7 @@
 						<label for="edit_name_user_freeradius" class="col-sm-3 control-label">{{ _('Username') }}</label>
 						<div class="col-sm-9">
 							<input type="edit_name_user_freeradius" class="form-control" id="edit_name_user_freeradius" name="edit_name_user_freeradius" placeholder="{{ _('Username') }}">
+							<input type="hidden" id="edit_previous_name_user_freeradius" name="edit_previous_name_user_freeradius">
 						</div>
 					</div>
 
@@ -71,7 +81,46 @@
 						<div class="col-sm-9">
 							<input type="edit_right_user_freeradius" class="form-control" id="edit_right_user_freeradius" name="edit_right_user_freeradius" placeholder="{{ _('Right') }}">
 						</div>
-					</div>	
+					</div>
+
+					<div class="form-group">
+						<label for="edit_expiration_date_user_freeradius" class="col-sm-3 control-label">{{ _('Expire on') }}</label>
+						<div class="col-sm-9">
+							<input type="edit_expiration_date_user_freeradius" class="form-control" id="edit_expiration_date_user_freeradius" name="edit_expiration_date_user_freeradius" placeholder="">
+						</div>
+					</div>
+
+					<div class="form-group">
+						<label for="edit_perimeter_user_freeradius" class="col-sm-3 control-label">{{ _('Perimeter') }}</label>
+						<div class="col-sm-9 im_relative">
+							<input type="edit_perimeter_user_freeradius" class="form-control" id="edit_perimeter_user_freeradius" name="edit_perimeter_user_freeradius" placeholder="{{ _('Perimeter') }}">
+							<div id="edit_perimeter_select_freeradius" class=" overlay">
+								<ul class="list-unstyled">
+
+								</ul>
+							</div>
+						</div>
+												
+					</div>
+
+					<div class="form-group">
+						<div class="col-sm-12 edit_perimeter_list_user_freeradius">
+							<div class="table-responsive">
+								<table id="edit_tab_list_perimeter_user_freeradius" class="table table-hover">
+									<thead>
+										<tr>
+											<th>Perimeter</th>
+											<th><i class="fa fa-gear"></i></th>
+										</tr>
+									</thead>
+									<tbody>
+															
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+
 				</form>
 			</div>
 
@@ -113,6 +162,9 @@
 									</div>
 									<div class="panel-body">
 										
+										<div id="alert_input" class="alert alert-warning" style="display: none;">
+										</div>
+
 										<form class="form-horizontal" role="form" name="create_new_user_freeradius" action="im_crud_user_freeradius/new" method="post">
 
 											<div class="form-group">
@@ -146,6 +198,46 @@
 												<label for="right_user_freeradius" class="col-sm-3 control-label">{{ _('Right') }}</label>
 												<div class="col-sm-9">
 													<input type="right_user_freeradius" class="form-control" id="right_user_freeradius" name="right_user_freeradius" placeholder="{{ _('Right') }}">
+												</div>
+											</div>
+
+											<div class="form-group">
+												<label for="expiration_date_user_freeradius" class="col-sm-3 control-label">{{ _('Expire on') }}</label>
+												<div class="col-sm-9">
+													<input type="expiration_date_user_freeradius" class="form-control" id="expiration_date_user_freeradius" name="expiration_date_user_freeradius" placeholder="">
+												</div>
+											</div>
+
+											<div class="form-group">
+
+
+												<label for="perimeter_user_freeradius" class="col-sm-3 control-label">{{ _('Perimeter') }}</label>
+												<div class="col-sm-9 im_relative">
+													<input type="perimeter_user_freeradius" class="form-control" id="perimeter_user_freeradius" name="perimeter_user_freeradius" placeholder="{{ _('Perimeter') }}">
+													<div id="perimeter_select_freeradius" class=" overlay">
+														<ul class="list-unstyled">
+
+														</ul>
+													</div>
+												</div>
+												
+											</div>
+
+											<div class="form-group">
+												<div class="col-sm-12 perimeter_list_user_freeradius">
+													<div class="table-responsive">
+														<table id="tab_list_perimeter_user_freeradius" class="table table-hover">
+															<thead>
+																<tr>
+																	<th>Perimeter</th>
+																	<th><i class="fa fa-gear"></i></th>
+																</tr>
+															</thead>
+															<tbody>
+																
+															</tbody>
+														</table>
+													</div>
 												</div>
 											</div>
 
@@ -221,6 +313,7 @@
 														<th>{{ _('Username') }}</th>
 														<th>{{ _('Right') }}</th>
 														<th>{{ _('Connection') }}</th>
+														<th>{{ _('Status') }}</th>
 														<th>{{ _('Actions') }}</th>
 													</tr>
 												</thead>
@@ -244,6 +337,11 @@
 
 	{% block js %}
 		{% include 'im_js.tpl' %}
+		<script src="/web/js/plugins/inputmask/inputmask.js"></script>
+		<script src="/web/js/plugins/inputmask/inputmask.extensions.js"></script>
+		<script src="/web/js/plugins/inputmask/inputmask.numeric.extensions.js"></script>
+		<script src="/web/js/plugins/inputmask/inputmask.date.extensions.js"></script>
+		<script src="/web/js/plugins/inputmask/jquery.inputmask.js"></script>
 		<script src="/web/js/im_crud_user_freeradius.js"></script>
 	{% endblock js %}
 

@@ -5,6 +5,7 @@ __all__ = ('follow',)
 import im_agentconfigclass_freeradius
 import logging
 import os
+import re
 import setproctitle
 import signal
 import socket
@@ -59,20 +60,45 @@ class FileLog(ApplicationSession):
 	def onJoin(self, details):
 		logging.info('session joined FileLog')
 
-		def readLogFreeradius():
+		def time_sorted_ls(radiusname, file=None, path=None):
+
+			if radius_agent_name != radiusname:
+				return list()
+
+			if file == None:
+				file = logRadius
+
+			if path == None and file != None:
+				path = os.path.dirname(os.path.realpath(file))
+
+			list_dir = os.listdir(path)
+
+			filter_func = lambda file: re.search('(radius\.log)([\.0-9]*)(?!gz)$', file, re.IGNORECASE)
+			list_dir_filter = filter(filter_func, list_dir)
+
+			mtime = lambda f: os.stat(os.path.join(path, f)).st_mtime
+			return list(sorted(list_dir_filter, key=mtime))
+
+		def readLogFreeradius(radiusname, file):
 			ret = ''
 
-			with open(logRadius, 'rt') as f:
+			if radius_agent_name != radiusname:
+				return ret
+
+			path = os.path.dirname(os.path.realpath(logRadius))
+
+			with open('{0}/{1}'.format(path, file), 'rt') as f:
 				for line in f:
 					ret += '{0}</br>'.format(line)
 
 			return ret
 
 		try:
-			reg = yield self.register(readLogFreeradius, uriRPC)
+			reg_read = yield self.register(readLogFreeradius, uriRPC_readfile_log)
+			reg_list = yield self.register(time_sorted_ls, uriRPC_listfile_log)
 			logging.info('Procedure to read Radius file log registered')
 		except Exception as e: 
-			logging.error('Could not register procedure: {}'.format(e))
+			logging.error('Could not register procedure: {0}'.format(e))
 
         # can do subscribes, registers here e.g.:
         # yield self.subscribe(...)
@@ -83,6 +109,12 @@ def launchFilelog():
 	pid = os.getpid()
 
 	try:
+		if not os.path.isfile('/var/run/im/im_agent_websocket_rpc_freeradius.pid'):
+			path, filename = os.path.split('/var/run/im/im_agent_websocket_rpc_freeradius.pid')
+			if not os.path.isdir(path):
+				os.makedirs(path)
+			open('/var/run/im/im_agent_websocket_rpc_freeradius.pid', 'a').close()
+
 		fd = open('/var/run/im/im_agent_websocket_rpc_freeradius.pid', 'w')
 		fd.write(str(pid))
 		fd.close()
@@ -130,31 +162,38 @@ class LiveLog(ApplicationSession):
 		logging.info("session joined LiveLog")
 
 		queue = self.config.extra['queue']
+		radius_agent_name = self.config.extra['radius_agent_name']
 
 		while True:
 
 			to_publish = queue.get()
 			logging.debug('To publish : {0}'.format(to_publish))
 			try:
-				yield self.publish(uriTopic, to_publish, options = PublishOptions(acknowledge = True))
+				yield self.publish(uriTopic, [radius_agent_name, to_publish], options = PublishOptions(acknowledge = True))
 				logging.debug('ok, event published to topic'.format())
 			except Exception as e:
-				logging.error('publication to topic failed: {}'.format(e))
+				logging.error('publication to topic failed: {0}'.format(e))
 
         # can do subscribes, registers here e.g.:
         # yield self.subscribe(...)
         # yield self.register(...)
 
-def launchLivelog(queue):
+def launchLivelog(queue, radius_agent_name):
 
 	pid = os.getpid()
 
 	try:
+		if not os.path.isfile('/var/run/im/im_agent_websocket_live_freeradius.pid'):
+			path, filename = os.path.split('/var/run/im/im_agent_websocket_live_freeradius.pid')
+			if not os.path.isdir(path):
+				os.makedirs(path)
+			open('/var/run/im/im_agent_websocket_live_freeradius.pid', 'a').close()
+
 		fd = open('/var/run/im/im_agent_websocket_live_freeradius.pid', 'w')
 		fd.write(str(pid))
 		fd.close()
 
-		runner = ApplicationRunner(url=u"ws://{0}:{1}/ws".format(urlCrossbar, portCrossbar), realm=realmCrossbar, extra={'queue':queue, 'pid':pid})
+		runner = ApplicationRunner(url=u"ws://{0}:{1}/ws".format(urlCrossbar, portCrossbar), realm=realmCrossbar, extra={'queue':queue, 'pid':pid, 'radius_agent_name':radius_agent_name})
 		runner.run(LiveLog)
 	except Exception, e:
 		logging.error('launchLivelog error : {0}'.format(e))
@@ -183,19 +222,36 @@ def streamfile(q):
 
 	pid = os.getpid()
 
-	fd = open('/var/run/im/im_agent_streamfile_freeradius.pid', 'w')
-	fd.write(str(pid))
-	fd.close()
+	try:
+		if not os.path.isfile('/var/run/im/im_agent_streamfile_freeradius.pid'):
+			path, filename = os.path.split('/var/run/im/im_agent_streamfile_freeradius.pid')
+			if not os.path.isdir(path):
+				os.makedirs(path)
+			open('/var/run/im/im_agent_streamfile_freeradius.pid', 'a').close()
+
+		fd = open('/var/run/im/im_agent_streamfile_freeradius.pid', 'w')
+		fd.write(str(pid))
+		fd.close()
+		signal.signal(signal.SIGHUP, signal_logrotate)
+	except Exception, e:
+		logging.error('Receive exception in Init streaming logfile process : {}'.format(e))
+		raise e
 
 	while True:
 		try:
 			with open(logRadius, 'rt') as following:
-				following.seek(-2048, 2)
+				logging.debug('Open log file {0} to stream: {1}'.format(logRadius, following))
+				following.seek(0, 2)
 				for line in follow(following):
 					logging.debug('Send from stream : {0}'.format(line))
 					q.put(line)
+		except LogRotateSigHup as e:
+			logging.info('Receive Logrotate event : {0}'.format(e))
+			following.close()
 		except Exception, e:
-			logging.warning('Receive exception during streaming logfile : {}'.format(e))
+			logging.error('Receive exception during streaming logfile : {0}'.format(e))
+			raise e
+			break
 
 def signal_logrotate(signum, stack):
 	logging.debug('Receive SIGHUP from Logrotate')
@@ -233,7 +289,8 @@ if __name__ == '__main__':
 	
 	if not os.path.isfile(Conf.log_file):
 		path, filename = os.path.split(Conf.log_file)
-		os.makedirs(path)
+		if not os.path.isdir(path):
+			os.makedirs(path)
 		open(Conf.log_file, 'a').close()
 	
 	logging.basicConfig(level=eval(Conf.websocket_debug_level), filename=Conf.websocket_log_file, format='%(asctime)s :: %(levelname)s :: %(message)s', datefmt='%m/%d/%Y %H:%M:%S')
@@ -249,11 +306,13 @@ if __name__ == '__main__':
 	portCrossbar = Conf.websocket_port
 	realmCrossbar = unicode(Conf.websocket_realm)
 	uriTopic = unicode(Conf.websocket_uripubsub)
-	uriRPC = unicode(Conf.websocket_urirpc)
+	uriRPC_readfile_log = unicode(Conf.websocket_urirpc_readfile_log)
+	uriRPC_listfile_log = unicode(Conf.websocket_urirpc_listfile_log)
 	logRadius = Conf.websocket_radius_log
+	radius_agent_name = Conf.agent_name
 
 	q = Queue()
-	pLive = Process(target=launchLivelog, args=(q,))
+	pLive = Process(target=launchLivelog, args=(q,radius_agent_name,))
 	pFile = Process(target=launchFilelog)
 	pStream = Process(target=streamfile, args=(q,))
 	pLive.start()
@@ -286,7 +345,7 @@ if __name__ == '__main__':
 						q = Queue()
 						logging.warning('Process pLive was kill before restart ? : {0}'.format(pLive.exitcode))
 						logging.info('Start pLive process'.format())
-						pLive = Process(target=launchLivelog, args=(q,))
+						pLive = Process(target=launchLivelog, args=(q,radius_agent_name,))
 						pLive.start()
 
 						logging.warning('Process pFile was kill before restart ? : {0}'.format(pFile.exitcode))

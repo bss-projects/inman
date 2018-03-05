@@ -1,0 +1,13 @@
+[Unit]
+Description=IM Websocket Freeradius
+After=syslog.target network.target redis.service im_agent_freeradius.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/inman/agent_freeradius/
+PIDFile=/var/run/im/im_cluster_freeradius.pid
+ExecStart=/opt/inman/agent_freeradius/im_agentside_websocket_freeradius.exe
+ExecStop=/opt/inman/agent_freeradius/agent_stop_daemon_freeradius.sh Websocket $MAINPID
+
+[Install]
+WantedBy=multi-user.target

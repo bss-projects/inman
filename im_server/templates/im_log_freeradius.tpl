@@ -22,6 +22,14 @@
 					<div class="col-lg-2">
 						<div class="panel panel-default">
 							<div class="panel-heading">
+								<i class="fa fa-tag fa-fw"></i> {{ _('Choose RADIUS') }}
+							</div>
+							<div class="panel-body">
+								<input type="radiusname_log_freeradius" class="form-control" id="radiusname_log_freeradius" name="radiusname_log_freeradius" placeholder="{{ _('Radius name') }}">
+							</div>
+						</div>
+						<div class="panel panel-default">
+							<div class="panel-heading">
 								<i class="fa fa-hand-o-up fa-fw"></i> {{ _('Type') }}
 							</div>
 							<div class="panel-body">

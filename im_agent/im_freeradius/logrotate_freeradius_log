@@ -1,8 +1,8 @@
 #
 #    Global options for all logfiles
 #
-weekly
-rotate 15
+daily
+rotate 7
 missingok
 compress
 notifempty
@@ -10,6 +10,6 @@ notifempty
 #
 #  The main server log
 #
-/var/log/freeradius/radius.log.* {
+/var/log/freeradius/radius.log.8 {
         copy
 }

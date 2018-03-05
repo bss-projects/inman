@@ -31,6 +31,13 @@
 								"register": true
 							},
 							{
+								"uri": "im.freeradius.list.file.log",
+								"publish": false,
+								"subscribe": false,
+								"call": true,
+								"register": true
+							},
+							{
 								"uri": "im.supervisor.scp",
 								"publish": true,
 								"subscribe": true,

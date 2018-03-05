@@ -301,7 +301,7 @@
 
 	{% block js %}
 		{% include 'im_js.tpl' %}
-		<script src="/web/js/im_dashboard.js"></script>
+<!--		<script src="/web/js/im_dashboard.js"></script> -->
 	{% endblock js %}
 
 {# Faire un include pour les JS globaux et IF pour ne prendre que le JS spec a la page #}	

@@ -25,3 +25,10 @@ notifempty
 /var/log/im_freeradius/websocket.log {
         copytruncate
 }
+
+#
+#  The cluster plugin freeradius agent log
+#
+/var/log/im_freeradius/cluster_agent.log {
+        copytruncate
+}

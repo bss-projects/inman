@@ -13,6 +13,7 @@ fd.write('list_right_freeradius' + "\n")
 
 l_flag_level = json.loads(TD['new']['vendor_info'])['l_flag_level']
 vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['new']['vendor_info'])['radiusname']
 
 for d_level in l_flag_level :
  if d_level['label'] != 'list_flag' :
@@ -26,14 +27,17 @@ if res:
   uid = row['id']
 
  for label in l_label:
-  if label not in l_right:
-   l_right.append(label)
+  if {'radiusname': radiusname, 'right': label} not in l_right:
+   l_right.append({'radiusname': radiusname, 'right': label})
 
  l_right = json.dumps(l_right)
  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_right +"') WHERE id = "+ str(uid) +"")
 
 else :
- l_right += l_label
+ for label in l_label:
+  if {'radiusname': radiusname, 'right': label} not in l_right:
+   l_right.append({'radiusname': radiusname, 'right': label})
+
  l_right = json.dumps(l_right)
  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_right_freeradius', '"+ l_right +"')")
 
@@ -61,37 +65,43 @@ AS $$
 import json
 import sys
 
+flag_view_empty = False
 l_right = []
-l_label = []
 
-fd = open('/tmp/test_trigger', 'a')
-fd.write("\n\n")
-fd.write("delete_right_freeradius\n")
+fd = open('/tmp/psql/test_trigger_delete_right', 'a')
 
-l_flag_level = json.loads(TD['old']['vendor_info'])['l_flag_level']
-vendorname = json.loads(TD['old']['vendor_info'])['vendorname']
-uid = TD['old']['id']
+l_row_vendor_info_for_right = plpy.execute("SELECT json_build_object('radiusname', vendor_info->'radiusname', 'vendorname', vendor_info->'vendorname', 'l_flag_level', vendor_info->'l_flag_level') FROM vendor_freeradius")
 
-OLDl_flag_level = json.loads(TD['old']['vendor_info'])['l_flag_level']
-OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+l_right_matview = plpy.execute("SELECT * FROM matview WHERE name = 'list_right_freeradius'")
 
-res = plpy.execute("SELECT json_build_object('radiusname', vendor_info->'radiusname', 'vendorname', vendor_info->'vendorname', 'label', vendor_info->'l_flag_level') FROM vendor_freeradius")
+fd.write('Vendor info in DB {0}\n Right Matview {1}\n'.format(l_row_vendor_info_for_right, l_right_matview))
 
-if res:
- for row in res:
-  fd.write(json.dumps(row) + "\n")
-  l_flag = json.loads(row['json_build_object'])['label']
-  for d_flag in l_flag :
-   if d_flag['label'] != 'list_flag' and d_flag['label'] not in l_label:
-    l_label.append(d_flag['label'])
-
-res = plpy.execute("SELECT * FROM matview WHERE name = 'list_right_freeradius'")
-
-if res:
- for row in res:
+if l_right_matview:
+ for row in l_right_matview:
   uid = row['id']
+else :
+ flag_view_empty = True
 
- l_right = json.dumps(l_label)
+for vendor_with_right in l_row_vendor_info_for_right :
+ row = json.loads(vendor_with_right['json_build_object'])
+ fd.write('ROW {0}\n type -> {1}\n'.format(row, type(row)))
+ radiusname = row['radiusname']
+ l_flag_level = row['l_flag_level']
+
+ right = {}
+ for flag_level in l_flag_level:
+  if flag_level['label'] != 'list_flag':
+   right = {'radiusname': radiusname, 'right': flag_level['label']}
+   if {'radiusname': radiusname, 'right': flag_level['label']} not in l_right:
+    l_right.append(right)
+
+fd.write('L_RIGHT {0}\n type -> {1}\n'.format(l_right, type(l_right)))
+
+l_right = json.dumps(l_right)
+
+if flag_view_empty:
+ res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_right_freeradius', '"+ l_right +"')")
+else:
  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_right +"') WHERE id = "+ str(uid) +"")
 
 $$ LANGUAGE plpythonu;
@@ -114,37 +124,43 @@ AS $$
 import json
 import sys
 
+flag_view_empty = False
 l_right = []
-l_label = []
 
-fd = open('/tmp/test_trigger', 'a')
-fd.write("\n\n")
-fd.write("update_right_freeradius\n")
+fd = open('/tmp/psql/test_trigger_update_right', 'a')
 
-l_flag_level = json.loads(TD['new']['vendor_info'])['l_flag_level']
-vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
-uid = TD['new']['id']
+l_row_vendor_info_for_right = plpy.execute("SELECT json_build_object('radiusname', vendor_info->'radiusname', 'vendorname', vendor_info->'vendorname', 'l_flag_level', vendor_info->'l_flag_level') FROM vendor_freeradius")
 
-OLDl_flag_level = json.loads(TD['old']['vendor_info'])['l_flag_level']
-OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+l_right_matview = plpy.execute("SELECT * FROM matview WHERE name = 'list_right_freeradius'")
 
-res = plpy.execute("SELECT json_build_object('radiusname', vendor_info->'radiusname', 'vendorname', vendor_info->'vendorname', 'label', vendor_info->'l_flag_level') FROM vendor_freeradius")
+fd.write('Vendor info in DB {0}\n Right Matview {1}\n'.format(l_row_vendor_info_for_right, l_right_matview))
 
-if res:
- for row in res:
-  fd.write(json.dumps(row) + "\n")
-  l_flag = json.loads(row['json_build_object'])['label']
-  for d_flag in l_flag :
-   if d_flag['label'] != 'list_flag' and d_flag['label'] not in l_label:
-    l_label.append(d_flag['label'])
-
-res = plpy.execute("SELECT * FROM matview WHERE name = 'list_right_freeradius'")
-
-if res:
- for row in res:
+if l_right_matview:
+ for row in l_right_matview:
   uid = row['id']
+else :
+ flag_view_empty = True
 
- l_right = json.dumps(l_label)
+for vendor_with_right in l_row_vendor_info_for_right :
+ row = json.loads(vendor_with_right['json_build_object'])
+ fd.write('ROW {0}\n type -> {1}\n'.format(row, type(row)))
+ radiusname = row['radiusname']
+ l_flag_level = row['l_flag_level']
+
+ right = {}
+ for flag_level in l_flag_level:
+  if flag_level['label'] != 'list_flag':
+   right = {'radiusname': radiusname, 'right': flag_level['label']}
+   if {'radiusname': radiusname, 'right': flag_level['label']} not in l_right:
+    l_right.append(right)
+
+fd.write('L_RIGHT {0}\n type -> {1}\n'.format(l_right, type(l_right)))
+
+l_right = json.dumps(l_right)
+
+if flag_view_empty:
+ res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_right_freeradius', '"+ l_right +"')")
+else:
  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_right +"') WHERE id = "+ str(uid) +"")
 
 $$ LANGUAGE plpythonu;

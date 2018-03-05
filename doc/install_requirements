@@ -1,0 +1,847 @@
+#~~~~
+#~~ Deploy Server preprod
+#~~~~
+
+IF there is problem with SSL try to use
+pip install package_name -i https://pypi.python.org/simple/
+Because now all install have to pass by an SSL connection but in old distro the path is not update to date
+
+pip install nuitka
+Pour la compilation de l'application master et la livraison sous forme de binaire :
+Nuitka
+Ex. : nuitka --recurse-directory=/path_to/master.py_directory im_masterside.py
+Compile le master avec juste les im_class
+Apres juste besoin de pip des modules python public et apt
+
+compile master
+nuitka --recurse-directory=/root/inman/git/im_server im_masterside.py
+if not working
+nuitka --recurse-to=im_dbclass --recurse-to=im_agentdialogclass im_masterside.py
+
+après compilation :
+cd /root/inman/git/im_server && scp -r crossbar im_freeradius im_master.cfg im_master_confcheck.cfg im_masterside.exe init.d_im_master templates translation web_session root@srv.inman.lan:/opt/inman/master/im_server
+
+cd /root/inman/git/im_server && scp -r im_cron root@srv.inman.lan:/opt/inman/master/im_server
+Change 'cd' path in /opt/inman/master/im_server/im_cron/im_cron_expiration_user/im_cron_expiration_user_freeradius.sh
+
+SUR LE SERVER --->> Mise en place du cron pour expiration user account freeradius
+## INMAN CRON Account expiration loop
+59 23 * * * /opt/inman/master/im_server/im_cron/im_cron_expiration_user/im_cron_expiration_user_freeradius.sh >> /var/log/im_cron_expiration_account_freeradius.log 2>&1
+
+Mettre en place logrotate im_cron spec pour expiration account
+
+cd /root/inman/git/web && scp -r * root@srv.inman.lan:/opt/inman/master/web
+
+en root
+pg_dump -U dbu_inman -s inman > /root/inman/git/for_release/inman_dump_struct_v0.9.*-RC*.sql
+
+scp -r /root/inman/git/for_release root@srv.inman.lan:/opt/inman/
+
+Sur vtu25
+en root edit inman_dump_struct et remplacer CREATE FUNCTION par CREATE OR REPLACE FUNCTION
+** Supprimer toutes les références à des insertions de log depuis les procsto **
+avec le compte postgres
+psql -d inman < /opt/inman/for_release/inman_dump_struct_v0.9.*-RC*.sql
+
+avec le compte root
+python /opt/inman/for_release/populate_list_client_freeradius.py
+
+cp /opt/inman/master/im_server/crossbar/config.json /opt/inman/inman_crossbar/.crossbar
+cp /opt/inman/for_release/init.d_im_master-v0.9-RC2 /etc/init.d/im_master
+systemctl daemon-reload
+
+change /opt/inman/master/im_server/im_master.cfg
+change /opt/inman/master/web/js/conf_im.js
+change im_cron_expiration_user email destination
+Change 'cd' path in /opt/inman/master/im_server/im_cron/im_cron_expiration_user/im_cron_expiration_user_freeradius.sh
+
+#~~~~
+#~~ Deploy Agent preprod
+#~~~~
+
+Compile agent Freeradius:
+nuitka --recurse-directory=/root/inman/git/im_agent/im_freeradius im_agentside_freeradius.py
+nuitka --recurse-directory=/root/inman/git/im_agent/im_freeradius im_agentside_websocket_freeradius.py
+
+SUR LE SERVER --->> Mise en place du cron pour expiration user account freeradius
+## INMAN CRON Account expiration loop
+59 23 * * * /opt/inman/master/im_server/im_cron/im_cron_expiration_user/im_cron_expiration_user_freeradius.sh >> /var/log/im_cron_expiration_account_freeradius.log 2>&1
+
+Mettre en place logrotate im_cron spec pour expiration account
+
+
+Après la compile
+cd /root/inman/git/im_agent/im_freeradius && scp im_agent_freeradius.cfg im_agent_freeradius_confcheck.cfg im_agentside_freeradius.exe im_agentside_websocket_freeradius.exe init.d_im_agent_freeradius logrotate_freeradius logrotate_freeradius_log logrotate_im_freeradius rlm_im_freeradius.py root@srv_agent_radius.inman.lan:/opt/inman/agent_freeradius
+
+scp -r /root/inman/git/for_release root@srv_agent_radius.inman.lan:/opt/inman/
+
+Sur vtu26
+cp logrotate_freeradius logrotate_freeradius_log logrotate_im_freeradius /etc/logrotate.d/
+mv pour enlever logrotate_ dans le /etc/logrotate.d/
+cp /opt/inman/for_release/init.d_im_agent_freeradius-v0.9-RC2 /etc/init.d/im_agent_freeradius
+systemctl daemon-reload
+
+Change /opt/inman/agent_freeradius/im_agent_freeradius.cfg
+
+cp /opt/inman/agent_freeradius/rlm_im_freeradius.py /usr/local/lib/python2.7/dist-packages
+
+/etc/init.d/freeradius restart
+
+Pour l'agent supervision :
+apt-get install python
+apt-get install python-dev
+apt-get install python-pip
+
+pip install pynag
+pip install configobj
+pip install setproctitle
+pip install autobahn
+pip install twisted
+
+makedir /opt/inman/agent_supervisor
+
+####
+#apt-get install libapr1-dev
+#apt-get install libaprutil1-dev
+#apt-get install libsvn-dev
+#apt-get install python-svn
+####
+
+Pourl'agent bck:
+apt-get install bacula-console bacula-common
+modif /etc/bacula/bconsole.conf
+mise en place de l'adresse du serveur bacula distant et du password du director ainsi que de son nom
+
+echo "status storage" | bconsole | grep Bytes | head -n1
+[root@backup-virtual ~]# cat /root/miprueba
+restore client=wiki dir=/root  
+current
+yes
+[root@backup-virtual ~]# bconsole -c /etc/bacula/bconsole.conf < /root/miprueba
+
+Pour l'agent freeradius :
+apt-get install python
+apt-get install python-dev
+apt-get install python-pip
+apt-get install redis-server
+
+apt-get install autotools-dev binutils bsdmainutils build-essential bzip2 comerr-dev cpp cpp-5 debhelper dpkg-dev file g++ g++-5 gcc gcc-5 gcc-5-base gettext gettext-base groff-base intltool-debian krb5-multidev libasan2 libatomic1 libc-dev-bin libc6-dev libcc1-0 libcilkrts5 libcroco3 libdpkg-perl libexpat1 libexpat1-dev libffi6 libffi-dev libgcc-5-dev libgdbm-dev libgdbm3 libglib2.0-0 libgmp10 libgnutls-deb0-28 libgomp1 libgssapi-krb5-2 libgssrpc4 libhogweed4 libiodbc2 libiodbc2-dev libisl13 libitm1 libk5crypto3 libkadm5clnt-mit9 libkadm5srv-mit9 libkdb5-8 libkeyutils1 libkrb5-3 libkrb5-dev libkrb5support0 libldap-2.4-2 libldap2-dev liblsan0 libltdl-dev libltdl7 libmagic1 libmpc3 libmpfr4 libmpx0 libmysqlclient-dev libmysqlclient18 libnettle6 libp11-kit0 libpam0g-dev libpcap-dev libpcap0.8 libpcap0.8-dev libpci-dev libpci3 libperl-dev libperl5.20 libpipeline1 libpq-dev libpq5 libpython-dev libpython-stdlib libpython2.7 libpython2.7-dev libpython2.7-minimal libpython2.7-stdlib libquadmath0 libsasl2-2 libsasl2-dev libsasl2-modules-db libsensors4 libsensors4-dev libsnmp-base libsnmp-dev libsnmp30 libsqlite3-0 libssl-dev libssl1.0.0 libstdc++-5-dev libtasn1-6 libtool libtool-bin libtsan0 libubsan0 libunistring0 libwrap0 libwrap0-dev libxml2 linux-libc-dev make man-db mime-support mysql-common patch perl perl-modules po-debconf python python-dev python-minimal python2.7 python2.7-dev python2.7-minimal xz-utils zlib1g-dev quilt libcurl4-openssl-dev libcap-dev libjson-c2 libjson0 libjson-c-dev libjson0-dev libreadline-dev libsqlite3-dev libtalloc-dev libwbclient-dev libyubikey-dev ssl-cert libmemcached-dev apt-utils libcrypto++-dev libcrypto++-utils libldap2-dev ldap-utils libldap-2.4-2 libsasl2-dev samba-dev
+
+apt-get install autotools-dev binutils bsdmainutils build-essential bzip2 comerr-dev cpp debhelper dpkg-dev file g++ gcc gettext gettext-base groff-base intltool-debian krb5-multidev  libatomic1 libc-dev-bin libc6-dev libcilkrts5 libcroco3 libdpkg-perl libexpat1 libexpat1-dev libffi6 libffi-dev libgdbm-dev libgdbm3 libglib2.0-0 libgmp10 libgnutls-deb0-28 libgomp1 libgssapi-krb5-2 libgssrpc4 libiodbc2 libiodbc2-dev libitm1 libk5crypto3 libkadm5clnt-mit9 libkadm5srv-mit9 libkeyutils1 libkrb5-3 libkrb5-dev libkrb5support0 libldap-2.4-2 libldap2-dev liblsan0 libltdl-dev libltdl7 libmagic1 libmpc3 libmpfr4 libmysqlclient-dev libmysqlclient18 libp11-kit0 libpam0g-dev libpcap-dev libpcap0.8 libpcap0.8-dev libpci-dev libpci3 libperl-dev libperl5.20 libpipeline1 libpq-dev libpq5 libpython-dev libpython-stdlib libpython2.7 libpython2.7-dev libpython2.7-minimal libpython2.7-stdlib libquadmath0 libsasl2-2 libsasl2-dev libsasl2-modules-db libsensors4 libsensors4-dev libsnmp-base libsnmp-dev libsnmp30 libsqlite3-0 libssl-dev libssl1.0.0 libtasn1-6 libtool libtool-bin libtsan0 libubsan0 libunistring0 libwrap0 libwrap0-dev libxml2 linux-libc-dev make man-db mime-support mysql-common patch perl perl-modules po-debconf python python-dev python-minimal python2.7 python2.7-dev python2.7-minimal xz-utils zlib1g-dev quilt libcurl4-openssl-dev libcap-dev libjson-c2 libjson0 libjson-c-dev libjson0-dev libreadline-dev libsqlite3-dev libtalloc-dev libwbclient-dev libyubikey-dev ssl-cert libmemcached-dev apt-utils libcrypto++-dev libcrypto++-utils libldap2-dev ldap-utils libldap-2.4-2 libsasl2-dev samba-dev
+
+tar zxf freeradius-server-Z.X.Y.tar.gz
+cd freeradius-server-Z.X.Y
+
+./configure --build x86_64-linux-gnu \
+	--prefix=/usr \
+	--exec-prefix=/usr \
+	--mandir=/usr/share/man \
+	--sysconfdir=/etc \
+	--libdir=/usr/lib/freeradius \
+	--datadir=/usr/share \
+	--localstatedir=/var \
+	--with-raddbdir=/etc/freeradius \
+	--with-logdir=/var/log/freeradius \
+	--enable-ltdl-install=no --enable-strict-dependencies \
+	--with-large-files --with-udpfromto --with-edir \
+	--enable-developer \
+	--config-cache \
+	--without-rlm_eap_tnc \
+	--with-rlm_sql_postgresql_lib_dir=`pg_config --libdir` \
+	--with-rlm_sql_postgresql_include_dir=`pg_config --includedir` \
+	--without-rlm_eap_ikev2 \
+	--without-rlm_sql_oracle \
+	--without-rlm_sql_unixodbc \
+	--with-system-libtool \
+	--without-rlm_couchbase \
+	--without-rlm_idn \
+	--without-rlm_opendirectory \
+	--without-rlm_redis \
+	--without-rlm_rediswho \
+	--without-rlm_ruby \
+	--without-rlm_securid \
+	--without-rlm_sql_firebird \
+	--without-rlm_sql_db2 \
+	--without-rlm_sql_iodbc \
+	--without-rlm_sql_freetds \
+	--without-rlm_unbound
+
+make && make install
+
+cp /usr/sbin/rc.radiusd /etc/init.d/radiusd
+
+update-rc.d radiusd start 50 2 3 4 5 . stop 19 0 1 6 .
+
+update-rc.d im_agent_freeradius defaults
+
+update-rc.d redis-server defaults
+
+pip install configobj
+pip install setproctitle
+pip install redis
+pip install autobahn
+pip install twisted
+pip install service_identity
+pip install x509
+
+makedir /var/run/im/
+makedir /opt/inman/agent_freeradius
+
+touch /etc/freeradius/clients_im_range.conf /etc/freeradius/clients_im.conf
+
+In /etc/freeradius/radiusd.conf add "$INCLUDE clients_im.conf" and "$INCLUDE clients_im_range.conf" after "$INCLUDE clients.conf"
+
+Put im_agent/im_freeradius/rlm_im_freeradius.py in /usr/local/lib/python2.7/dist-packages
+
+Edit /etc/freeradius/mods-available/python and put
+#
+# Make sure the PYTHONPATH environmental variable contains the
+# directory(s) for the modules listed below.
+#
+# Uncomment any func_* which are included in your module. If
+# rlm_python is called for a section which does not have
+# a function defined, it will return NOOP.
+#
+python {
+        module = rlm_im_freeradius
+
+        mod_instantiate = ${.module}
+        mod_detach = ${.module}
+
+        mod_authorize = ${.module}
+        func_authorize = authorize
+
+        mod_authenticate = ${.module}
+        func_authenticate = authenticate
+
+        mod_preacct = ${.module}
+        mod_accounting = ${.module}
+        mod_checksimul = ${.module}
+        mod_pre_proxy = ${.module}
+        mod_post_proxy = ${.module}
+        mod_post_auth = ${.module}
+        mod_recv_coa = ${.module}
+        mod_send_coa = ${.module}
+}
+
+THEN ln -s /etc/freeradius/mods-available/python python IN /etc/freeradius/mods-enabled
+
+In /etc/freeradius/mods-available/ldap edit your configuration to correctly join your LDAP
+
+Finally edit your "site-enabled". Usally "default" and "inner-tunnel".
+In authorize section use
+authorize {
+	filter_username
+	preprocess
+	chap
+	mschap
+	digest
+	suffix
+	python
+	eap {
+		ok = return
+	}
+	files
+#	ldap
+	expiration
+	logintime
+	pap
+}
+
+
+In authenticate section add
+Auth-Type Python {
+                python
+        }
+at the begging of the block
+don't forget to uncomment
+Auth-Type LDAP {
+	ldap
+}
+in this section if you want to use LDAP
+
+Put logrotate in place
+
+In radiusd.conf activate log espacially for auth
+
+-------------------------
+
+#~~~~
+#~~ Deploy RabbitMQ server
+#~~~~
+
+apt-get install apt-transport-https
+apt-get install curl
+apt-get install rabbitmq-server
+rabbitmq-plugins enable rabbitmq_management
+service rabbitmq-server restart
+rabbitmqctl add_user inman_mq pass
+rabbitmqctl add_user inman__admin_mq pass_admin
+rabbitmqctl set_user_tags inman__admin_mq administrator
+rabbitmqctl delete_user guest
+rabbitmqctl add_vhost inman_mq_vhost
+rabbitmqctl set_permissions -p inman_mq_vhost inman_mq ".*" ".*" ".*"
+
+pip install pika
+
+Only if you need the last version:
+.........
+curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh | bash
+
+!!! Don't forget to change {distribution} name
+less /etc/*release
+
+
+echo "deb https://dl.bintray.com/rabbitmq/debian {distribution} main" | tee /etc/apt/sources.list.d/bintray.rabbitmq.list
+
+wget -O- https://www.rabbitmq.com/rabbitmq-release-signing-key.asc | apt-key add -
+wget -O- https://dl.bintray.com/rabbitmq/Keys/rabbitmq-release-signing-key.asc | apt-key add -
+
+apt-get update
+.........
+
+
+-------------------------
+
+#~~~~
+#~~ Deploy InMan server
+#~~~~
+
+Pour le serveur :
+
+pip install bottle
+pip install cherrypy
+pip install paramiko
+pip install pynag (don't forget use lib/PyNag/__init.py__ to replace /usr/local/lib/python2.7/dist-packages/pynag/Parsers/__init__.py)
+pip install setproctitle
+pip install Jinja2
+pip install beaker
+pip install scp
+pip install autobahn
+pip install twisted
+pip install pycas (SSO)
+pip install python-ldap
+pip install markupsafe
+pip install beautifulsoup4 (dep pycas)
+apt-get install libxml2 libxslt1-dev (dep beautifulsoup4)
+#pip install elementtree (dep pycas)
+pip install psycopg2 (dep postgresql-server-dev-X.Y)
+pip install html2text
+
+--> Don't forget to change pycas lib with the one include inside the project
+
+apt-get install python-pip
+apt-get install python-dev
+apt-get install libapr1-dev
+apt-get install libaprutil1-dev
+apt-get install libsvn-dev
+apt-get install python-svn
+apt-get install locales
+apt-get install libffi-dev
+apt-get install postgresql-9.4
+apt-get install postgresql-server-dev-9.4
+apt-get install postgresql-plpython-9.4
+apt-get install postgresql-9.4-plv8
+apt-get install postgresql-9.4-python-multicorn
+version postgres >=v9.4
+
+makedir /opt/inman/master an put im_server and web
+makedir /opt/inman/inman_crossbar
+makedir .crossbar in /opt/inman/inman_crossbar and put im_server/crossbar/config.json
+
+###############
+Conf Postgres
+###############
+dpkg-reconfigure locales. Select fr_FR.utf8
+
+adduser dbu_inman    #from regular shell
+su - postgres
+psql
+
+CREATE USER dbu_inman WITH PASSWORD 'pass';
+
+CREATE DATABASE inman WITH ENCODING = 'UTF-8' LC_CTYPE = 'fr_FR.utf8' LC_COLLATE = 'fr_FR.utf8' OWNER dbu_inman TEMPLATE template0;
+
+CREATE EXTENSION plpythonu
+
+With ROOT user
+Modify the /etc/postgresql/X.Y/main/pg_hba.conf
+change the authentication setting of local all all (not local postgres) from peer to md5.
+
+Prevoir l'install en full utf-8
+http://blog.sserrano.com/post/40705964558/install-postgresql-91-with-utf-8-encoding-on
+http://www.bortzmeyer.org/postgresql-unicode.html
+
+Get empty JSON in DB
+select * from client_freeradius where client_info::text = '{}'::text;
+
+###############
+Conf DB
+###############
+Login with dbu_inman unix user in psql inman database to create table
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~ Tables specifiques pour Supervisor ~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Table hosts_supervisor
+CREATE TABLE hosts_supervisor (
+   id SERIAL UNIQUE NOT NULL,
+   host_info JSON
+);
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~ Tables specifiques pour Freeradius ~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Table vendor_freeradius
+CREATE TABLE vendor_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   vendor_info JSON
+);
+
+JSON vendor_info :
+{
+	"radiusname" : "",
+	"vendorname" : "",
+	"l_flag" :
+		[
+			{
+				"list_name" : "name",
+				"list" : 
+				[
+					"flag1",
+					"flag2"
+				]
+			},
+			{
+				"list_name" : "name",
+				"list" : 
+				[
+					"flag1",
+					"flag2"
+				]
+			}
+		]
+}
+
+JSON right_level :
+{
+	"radiusname" : "",
+	"vendorname" : "",
+	"l_right" :
+		[
+			{
+				"label" : "read-only",
+				"l_flag" :
+				[
+					{"flag1" : "r"},
+					{"flag2" : "type1"}
+				]
+			},
+			{
+				"label" : "read-write",
+				"l_flag" :
+				[
+					{"flag1" : "service-type=1"}
+				]
+			}
+		]
+}
+
+JSON vendor_info_merge_level :
+{
+	"radiusname" : "",
+	"vendorname" : "",
+	"l_flag_level" :
+		[
+			{
+				"label" : "list_flag",
+				"l_block" :
+					[
+						{
+							"block_name" : "name",
+							"list" :
+								[
+									{"flag1" : ""},
+									{"flag2" : ""}
+								]
+						},
+						{
+							"block_name" : "autre group de flag",
+							"list" :
+								[
+									{"flag18" : ""},
+									{"flag42" : ""}
+								]
+						}
+					]
+			},
+			{
+				"label" : "read-only",
+				"l_flag" :
+					[
+						{"flag1" : ""},
+						{"flag2" : ""},
+						{"flag18" : ""},
+						{"flag42" : ""}
+					]
+			}
+		]
+}
+
+Table user
+CREATE TABLE users_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   user_info JSON
+);
+
+JSON user_info :
+{
+	"username" : "",
+	"radiusname" : "",
+	"isladap" : true/false,
+	"password" : "",
+	"right_level" : ""
+	"network_perimeter_freeradius":
+						[
+							{"perimeter_name": "", "uid" : ""},
+							{"perimeter_name": "", "uid" : ""}
+						]
+}
+
+Table client
+CREATE TABLE client_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   client_info JSON
+);
+
+JSON client_info :
+{
+	"name" : "",
+	"ip" : "",
+	"vendorname" : "",
+	"sharedsecret" : "", #id of the shared secret in shared_secret_freeradius DB
+	"shortname" : "",
+	"radiusname" :""
+}
+
+Table shared_secret for unitary client shared secret
+CREATE TABLE shared_secret_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   shared_secret_info JSON
+);
+
+JSON shared_secret_info :
+{
+	"radiusname" : "",
+	"name" : "",
+	"key" : "",
+	"comment" : ""
+}
+
+Table range for client shared secret
+CREATE TABLE range_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   range_info JSON
+);
+
+JSON range_info :
+{
+	"radiusname" : "",
+	"rangename" : "",
+	"subnet" : "",
+	"sharedsecret" : ""
+}
+
+Table network perimeter
+CREATE TABLE network_perimeter_freeradius (
+   id SERIAL UNIQUE NOT NULL,
+   network_perimeter_info JSON
+);
+
+JSON network_perimeter_info :
+{
+	"radiusname" : "",
+	"label" : "",
+	"perimeter_type" : "ip_list" / "subnet",
+	"first_ip" : "", -> if type = subnet
+	"last_ip" : "", -> if type = subnet
+	"ip_list" : [] -> if type = ip_list
+}
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~ Tables transerves pour INMAN ~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Table agent
+CREATE TABLE agent (
+   id SERIAL UNIQUE NOT NULL,
+   agent_info JSON
+);
+
+JSON agent_info :
+{
+	"agent_name" : "",
+	"agent_hostname" : "",
+	"agent_ip" : "",
+	"agent_connection_type" : "",
+	"agent_rpc_port" : "",
+	"port_ssh_tunnel" : "",
+	"plugin" : ""
+}
+
+Table users
+CREATE TABLE users (
+   id SERIAL UNIQUE NOT NULL,
+   user_info JSON
+);
+
+JSON user_info :
+{
+	"login" : "",
+	"firstname" : "",
+	"lastname" : "",
+	"rights" : [
+		{
+			"plugin_name" : "",
+			"agent" : []
+		},
+		{
+			"plugin_name" : "",
+			"agent" : []
+		}
+	]
+}
+
+Table user_trace_action
+CREATE TABLE user_trace_action (
+   id SERIAL UNIQUE NOT NULL,
+   user_trace_action_info JSON
+);
+
+JSON user_trace_action :
+{
+	"login" : "",
+	"plugin" : "",
+	"agent" : "", #if exist
+	"action" : "",
+	"action_data" : [] or '' #depend on what is require to do the action
+}
+
+Table plugin
+CREATE TABLE plugin (
+   id SERIAL UNIQUE NOT NULL,
+   plugin_info JSON
+);
+
+JSON plugin_info :
+{
+	"plugin_name" : "",
+	"short_desc" : "",
+	"description" : "",
+}
+
+INSERT INTO users_freeradius (user_info) VALUES ('{"username": "test", "password": "test", "right": "roAll_admin", "isldap": "false", "radiusname": "Radius IRIS"}')
+
+INSERT INTO users (user_info) VALUES ('{"lastname": "Super Admin", "login": "admin", "password": "pass", "firstname": "Administrator", "rights": [{"plugin_name": "Administration", "agent": [""]}]}')
+
+INSERT INTO plugin (plugin_info) VALUES ('{"plugin_name": "Administration", "short_desc": "Give authorization to administrate InMan", "description": "To manage InMan, user have to get attach to this plugin"}')
+
+~~~~~~~~~~~~~~~~~~~~~~
+~~~ Temporaire le temps d'avoir une gestion de plugin complete il faut faire INSERT en force de la declaration.
+~~~~~~~~~~~~~~~~~~~~~~
+INSERT INTO plugin (plugin_info) VALUES ('{"plugin_name": "supervisor", "short_desc": "Plugin to management supervisor configuration like Nagios/Shinken", "description": "Edit configuration for host, hostgroup, template, service, contact, ..."}');
+
+inman=# INSERT INTO plugin (plugin_info) VALUES ('{"plugin_name": "freeradius", "short_desc": "Plugin to manage RADIUS Authorization/Authentication in Freeradius", "description": "Edit configuration for client, user, but also create group of rights link to vendors specific flag"}');
+
+**********************************
+** Gestion interne du mapreduce **
+**********************************
+
+Table matview
+CREATE TABLE matview (
+   id SERIAL UNIQUE NOT NULL,
+   name VARCHAR(140),
+   view_data JSON
+);
+
+##########################################
+# Struct CSV form mass import freeradius #
+##########################################
+
+No need to respect column order or to have only this type of column. Must have : the first line is column name line
+
+***
+* For User
+***
+"radiusname";"username";"right";"isldap"
+
+***
+* For Client
+***
+"radiusname";"name";"shortname";"ip";"vendorname";"sharedsecret"
+
+#########################################
+# Structure base REDIS Agent Freeradius #
+#########################################
+
+client_freeradius:_IP_: "{
+	'right_level1': [{'flag': 'val'}, {'flag': 'val'}],
+	'right_level2': [{'flag': 'val'}, {'flag': 'val'}]
+}"
+
+users_freeradius:_username_ : "{
+	'rights': ['right_level1', 'right_level2'],
+	'network_perimeter': [{'first_ip' : 'IP', 'last_ip' : 'IP'}, ['ip1', 'ip2', 'ip3']],
+	'isldap': 'true'/'false',
+	'password': ''
+}"
+
+###############
+# Crossbar.IO #
+###############
+
+Important require get GLIBC_24
+Prefer to install on Debian 8
+
+apt-key adv --keyserver hkps.pool.sks-keyservers.net --recv D58C6920
+or --keyserver hkp://hkps.pool.sks-keyservers.net:80 if behind proxy
+
+sh -c "echo 'deb http://package.crossbar.io/ubuntu trusty main' > /etc/apt/sources.list.d/crossbar.list"
+
+apt-get update
+
+apt-get install crossbar
+
+/opt/crossbar/bin/crossbar version
+
+Create an directory inman_crossbar directory and create inside an other directory named .crossbar and put into the config.json file.
+To start your WAMP server from here, stay in inman_crossbar directory and launch crossbar with /opt/crossbar/bin/crossbar start
+Maybe use /opt/crossbar/bin/crossbar upgrade to upgrade your conf file in version 2
+
+
+###############
+Install DB
+###############
+
+install elastic search
+http://www.elasticsearch.org/overview/elkdownloads/
+dpkg -i <package.deb>
+update-rc.d elasticsearch defaults 95 10
+
+install JRE
+https://www.java.com/fr/download/linux_manual.jsp
+apt-get install alien
+alien -d -i --scripts <package.rpm>
+
+pip install elasticsearch
+
+############
+install EJDB
+############
+
+ - Download https://github.com/Softmotions/ejdb
+ https://github.com/Softmotions/ejdb/tarball/master
+
+### Prerequisites
+**System libraries:**
+
+* gcc
+* zlib-dev
+* cunit
+* python-dev
+
+### Build and install
+
+```sh
+   cd ./tcejdb
+   ./configure --prefix=<installation prefix> && make && make check
+   make install
+```
+
+- Download https://github.com/Softmotions/ejdb-python
+https://github.com/Softmotions/ejdb-python/archive/master.zip
+python setup.py install
+
+curl -XPOST 'http://localhost:9200/inman/_flush'
+
+curl -XDELETE 'http://localhost:9200/inman/'
+
+curl -XPUT 'http://localhost:9200/inman' -d '
+{
+	"settings" : {
+		"index" : {
+			"number_of_shards" : 1,
+			"number_of_replicas" : 1
+		},  
+		"analysis" : {
+			"filter" : {
+				"dash_name_filter" :{
+					"type" : "word_delimiter",
+					"split_on_numerics": false,
+					"type_table": ["- => ALPHA", "_ => ALPHA", "/ => ALPHA"]
+				}
+			},
+			"analyzer" : {
+				"dash_name_analyzer" : {
+					"type" : "custom",
+					"tokenizer" : "whitespace",
+					"filter" : ["lowercase","dash_name_filter"]
+				}
+			}
+		}
+	},
+	"mappings" : {
+		"agent_list": {
+			"properties" : {
+				"agent_alias":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		},
+		"HostConfig": {
+			"properties" : {
+				"HostConfig":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		},
+		"HostList": {
+			"properties" : {
+				"HostList":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		},
+		"Hoststemplate": {
+			"properties" : {
+				"Hoststemplate":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		},
+		"ServicesList": {
+			"properties" : {
+				"ServicesList":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		},
+		"Servicestemplate": {
+			"properties" : {
+				"Servicestemplate":{
+					"type" : "string",
+					"analyzer" : "dash_name_analyzer"
+				}
+			}
+		}
+	}
+}'

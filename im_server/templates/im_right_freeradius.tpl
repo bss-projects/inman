@@ -19,6 +19,14 @@
 				<input type="hidden" id="radiusname_remove_freeradius" name="radiusname_remove_freeradius" class="radiusname_remove_freeradius">
 				<input type="hidden" id="vendor_remove_freeradius" name="vendor_remove_freeradius" class="vendor_remove_freeradius">
 				<input type="hidden" id="uid_remove_freeradius" name="uid_remove_freeradius" class="uid_remove_freeradius">
+				<div class="horizontallLine"></div>
+				<p>{{ _('It will impact') }} : </p>
+				<div id="remove_right_impact_list">
+					
+				</div>
+				<div id="remove_right_id_impact_list" style="display: none;">
+
+				</div>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-default" data-dismiss="modal">{{ _('Cancel') }}</button>
@@ -39,7 +47,10 @@
 			</div>
 			<div class="modal-body">
 				<div class="row">
-				<form class="form-horizontal col-lg-12" role="form" name="edit_right_freeradius" action="im_crud_right_freeradius/edit" method="post">
+					<div id="edit_alert_input" class="alert alert-warning" style="display: none;">
+
+					</div>
+					<form class="form-horizontal col-lg-12" role="form" name="edit_right_freeradius" action="im_crud_right_freeradius/edit" method="post">
 									<div class="form-group col-lg-12">
 										<label for="edit_radiusname_right_freeradius" class="col-sm-3 control-label">{{ _('Radius name') }}</label>
 										<div class="col-sm-9">
@@ -72,11 +83,14 @@
 											</div>
 										</div>
 									</div>
-								</form>
+					</form>
 				</div>
 			</div>
 			<div class="modal-footer">
 				<input type="hidden" id="uid_edit_freeradius" name="uid_edit_freeradius" class="uid_edit_freeradius">
+				<input type="hidden" id="edit_previous_radiusname_right_freeradius" name="edit_previous_radiusname_right_freeradius" class="edit_previous_radiusname_right_freeradius">
+				<input type="hidden" id="edit_previous_label_right_freeradius" name="edit_previous_label_right_freeradius" class="edit_previous_label_right_freeradius">
+				<input type="hidden" id="edit_previous_vendor_right_freeradius" name="edit_previous_vendor_right_freeradius" class="edit_previous_vendor_right_freeradius">
 				<button type="button" class="btn btn-default" data-dismiss="modal">{{ _('Cancel') }}</button>
 				<button type="button" class="btn btn-primary" id="proceed_edit">{{ _('Proceed') }}</button>
 			</div>
@@ -104,6 +118,9 @@
 								<i class="fa fa-plus-square-o fa-fw"></i> {{ _('Add right') }}
 							</div>
 							<div class="panel-body">
+
+								<div id="alert_input" class="alert alert-warning" style="display: none;">
+								</div>
 
 								<form class="form-horizontal" role="form" name="create_new_right_freeradius" action="im_crud_right_freeradius/new" method="post">
 									<div class="form-group">

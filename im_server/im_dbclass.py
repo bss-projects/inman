@@ -149,18 +149,33 @@ class DBManagement_postgres(object):
 		self.database = database
 		self.search_res = None
 		self.get_res = None
+		self.host = host
+		self.database = database
+		self.user = user
+		self.password = password
+		self.port = port
 		self.conn = psycopg2.connect(host=host, database=database, user=user, password=password, port=port)
-		self.cur = self.conn.cursor()
 		
 	def search(self, collection, search_parameter):
 		
 		if search_parameter['filter'] == 'all':
 			search_parameter['filter'] = '1=1'
 
-		self.cur.execute("SELECT "+ search_parameter['fields'] +" FROM "+ collection +" WHERE "+ search_parameter['filter'] +"")
-		search_res = self.cur.fetchall()
+		try:
+			cur = self.conn.cursor()
+
+			cur.execute("SELECT "+ search_parameter['fields'] +" FROM "+ collection +" WHERE "+ search_parameter['filter'] +"")
+		
+			search_res = cur.fetchall()
+		except psycopg2.Error:
+			print "SELECT "+ search_parameter['fields'] +" FROM "+ collection +" WHERE "+ search_parameter['filter'] +""
+			self.conn.commit()
+			cur.close()
+			return list()
 
 		self.conn.commit()
+
+		cur.close()
 
 		return search_res
 
@@ -184,8 +199,13 @@ class DBManagement_postgres(object):
 			if lenght:
 				vals += ','
 
-		res = self.cur.execute("INSERT INTO {0} ({1}) VALUES {2}".format(collection, columns, vals))
+		cur = self.conn.cursor()
+
+		res = cur.execute("INSERT INTO {0} ({1}) VALUES {2}".format(collection, columns, vals))
 		self.conn.commit()
+
+		cur.close()
+
 		return res
 
 	def publish(self, collection, doc):
@@ -207,8 +227,13 @@ class DBManagement_postgres(object):
 			vals += '\''+ str(val) +'\''
 			i += 1
 
-		res = self.cur.execute("INSERT INTO "+ collection +" ("+ columns +") VALUES ("+ vals +")")
+		cur = self.conn.cursor()
+
+		res = cur.execute("INSERT INTO "+ collection +" ("+ columns +") VALUES ("+ vals +")")
 		self.conn.commit()
+
+		cur.close()
+
 		return res
 
 	def update(self, collection, doc, id=None, search_parameter=None):
@@ -232,14 +257,24 @@ class DBManagement_postgres(object):
 			vals += '\''+ str(val) +'\''
 			i += 1
 
-		res = self.cur.execute("UPDATE "+ collection +" SET ("+ columns +") = ("+ vals +") WHERE "+ search_parameter['filter'] +"")
+		cur = self.conn.cursor()
+
+		res = cur.execute("UPDATE "+ collection +" SET ("+ columns +") = ("+ vals +") WHERE "+ search_parameter['filter'] +"")
 		self.conn.commit()
+
+		cur.close()
+
 		return res
 
 	def delete(self, collection, id, search_parameter):
 		if search_parameter['filter'] == 'all':
 			search_parameter['filter'] = '1=1'
 
-		res = self.cur.execute("DELETE FROM "+ collection +" WHERE "+ search_parameter['filter'] +"")
+		cur = self.conn.cursor()
+
+		res = cur.execute("DELETE FROM "+ collection +" WHERE "+ search_parameter['filter'] +"")
 		self.conn.commit()
+
+		cur.close()
+
 		return res

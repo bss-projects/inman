@@ -6,7 +6,7 @@
 ############
 
 DAEMON="im_masterside.py" #ligne de commande du programme
-DAEMON_dir="/opt/inman/master" #ligne de commande du programme
+DAEMON_dir="/opt/inman/master/im_server" #ligne de commande du programme
 daemon_OPT=""  #argument à utiliser par le programme
 DAEMONUSER="root" #utilisateur du programme
 daemon_NAME="IM Master" #Nom du programme (doit être identique à l'exécutable)
@@ -22,9 +22,22 @@ pid_path_WEBSOCKET="/var/run/im/im_scp_websocket_supervisor.pid"
 pid_path_pub_WEBSOCKET="/var/run/im/im_scp_websocket_pub_supervisor.pid"
 pid_path_sub_WEBSOCKET="/var/run/im/im_scp_websocket_sub_supervisor.pid"
 
+
+DAEMON_CROSS_dir="/opt/inman/inman_crossbar"
+daemon_CROSS="/opt/crossbar/bin/crossbar"
+daemon_CROSS_OPT="start"
+daemon_CROSS_Name="IM Crossbar"
+daemon_CROSS_Name_short="IM Crossbar"
+
+pid_path_CROSS="/var/run/im/im_crossbar.pid"
+
 PATH="/sbin:/bin:/usr/sbin:/usr/bin" #Ne pas toucher
 
-test -x "$DAEMON_dir/$DAEMON" || exit 0
+####
+## Mettre message d'erreur si le test suivant ne passe pas
+####
+
+test -x "$DAEMON_dir/$DAEMON" || exit 0 
 
 . /lib/lsb/init-functions
 
@@ -40,12 +53,19 @@ d_start_master () {
         log_end_msg $?
 }
 
+d_start_crossbar () {
+        log_daemon_msg "Starting system $daemon_CROSS Daemon"
+        start-stop-daemon --background --start --quiet --make-pidfile --pidfile $pid_path_CROSS --chdir $DAEMON_CROSS_dir --chuid $DAEMONUSER --exec $daemon_CROSS -- $daemon_CROSS_OPT
+        log_end_msg $?
+}
+
 d_start () {
 		if [ ! -d "/var/run/im" ]; then
 			mkdir /var/run/im
 		fi
 		d_start_websoc
 		d_start_master
+        d_start_crossbar
 }
 
 d_stop_websoc () {
@@ -62,9 +82,16 @@ d_stop_master () {
         log_end_msg $?
 }
 
+d_stop_crossbar () {
+        log_daemon_msg "Stopping system $daemon_CROSS_Name Daemon"
+        start-stop-daemon --stop --retry 5 --quiet --pidfile $pid_path_CROSS
+        log_end_msg $?
+}
+
 d_stop () {
 		d_stop_master
 		d_stop_websoc
+        d_stop_crossbar
 }
 
 case "$1" in
@@ -90,7 +117,8 @@ case "$1" in
 
 				status_of_proc -p $pid_path_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET"
 				status_of_proc -p $pid_path_pub_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET Pub com"
-				status_of_proc -p $pid_path_sub_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET Sub com" && exit 0 || exit $?
+				status_of_proc -p $pid_path_sub_WEBSOCKET "$daemon_WEBSOCKET_short" "$daemon_WEBSOCKET Sub com"
+                status_of_proc -p $pid_path_CROSS "$daemon_CROSS_Name_short" "$daemon_CROSS_Name" && exit 0 || exit $?
 #                status_of_proc "$daemon_NAME" "$DAEMON" "system-wide $daemon_NAME" && exit 0 || exit $?
                 ;;
         *)

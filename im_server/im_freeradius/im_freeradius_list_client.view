@@ -1,0 +1,105 @@
+CREATE OR REPLACE FUNCTION list_client_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_client = []
+ip = json.loads(TD['new']['client_info'])['ip']
+radiusname = json.loads(TD['new']['client_info'])['radiusname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_client_freeradius'")
+if res:
+ for row in res:
+  l_client = json.loads(row['view_data'])
+  uid = row['id']
+ if {'radiusname': radiusname, 'ip': ip} not in l_client:
+  l_client.append({'radiusname': radiusname, 'ip': ip})
+  l_client = json.dumps(l_client)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_client +"') WHERE id = "+ str(uid) +"")
+else:
+ l_client.append({'radiusname': radiusname, 'ip': ip})
+ l_client = json.dumps(l_client)
+ res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_client_freeradius', '"+l_client+"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER list_client_freeradius
+AFTER INSERT ON client_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE list_client_freeradius();
+
+
+CREATE OR REPLACE FUNCTION delete_client_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_client = []
+if 'ip' in json.loads(TD['old']['client_info']).keys():
+ ip = json.loads(TD['old']['client_info'])['ip']
+ radiusname = json.loads(TD['old']['client_info'])['radiusname']
+
+ #fd = open('/tmp/test_trigger', 'a')
+ #fd.write(row['view_data'] + "\n")
+
+ res = plpy.execute("SELECT * FROM matview WHERE name = 'list_client_freeradius'")
+ if res:
+  for row in res:
+   l_client = json.loads(row['view_data'])
+   uid = row['id']
+  if {'radiusname': radiusname, 'ip': ip} in l_client:
+   position_in_list = l_client.index({'radiusname': radiusname, 'ip': ip})
+   del l_client[position_in_list]
+   l_client = json.dumps(l_client)
+   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_client +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER delete_client_freeradius
+AFTER DELETE ON client_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE delete_client_freeradius();
+
+
+CREATE OR REPLACE FUNCTION update_client_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_client = []
+ip = json.loads(TD['new']['client_info'])['ip']
+radiusname = json.loads(TD['new']['client_info'])['radiusname']
+
+OLDip = json.loads(TD['old']['client_info'])['ip']
+OLDradiusname = json.loads(TD['old']['client_info'])['radiusname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_client_freeradius'")
+if res:
+ for row in res:
+  l_client = json.loads(row['view_data'])
+  uid = row['id']
+ if {'radiusname': OLDradiusname, 'ip': OLDip} in l_client:
+  position_in_list = l_client.index({'radiusname': OLDradiusname, 'ip': OLDip})
+  del l_client[position_in_list]
+  l_client.append({'radiusname': radiusname, 'ip': ip})
+  l_client = json.dumps(l_client)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_client +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER update_client_freeradius
+AFTER UPDATE ON client_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE update_client_freeradius();

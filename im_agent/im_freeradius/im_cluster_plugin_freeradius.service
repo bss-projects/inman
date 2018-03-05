@@ -1,0 +1,12 @@
+[Unit]
+Description=IM Cluster Agent Freeradius
+After=syslog.target network.target redis.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/inman/agent_freeradius/
+PIDFile=/var/run/im/im_cluster_freeradius.pid
+ExecStart=/opt/inman/agent_freeradius/im_clusterside_freeradius.exe
+
+[Install]
+WantedBy=multi-user.target

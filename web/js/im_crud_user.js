@@ -1,6 +1,5 @@
 $(function()
 {
-
 	$('#plugin_user').select2({
 		ajax: {
 			url: "http://"+urlMaster+"/im_list_plugin",

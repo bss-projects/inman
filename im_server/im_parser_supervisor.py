@@ -193,7 +193,7 @@ def launchWAMPSub(rpcApi):
 
 def get_login (realm, username, may_save):
 	logging.info('Login into SVN server {}'.format(urlCrossbar))
-	return True, "admin", "Sys.Nepi-vsvn", False
+	return True, "admin", "Pass", False
 
 log_message = "delete"
 def get_log_message():

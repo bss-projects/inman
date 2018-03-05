@@ -1,0 +1,9 @@
+/var/log/im_cron/im_cron_expiration_account_freeradius.log {
+	monthly
+	rotate 12
+	copytruncate
+	delaycompress
+	compress
+	notifempty
+	missingok
+}

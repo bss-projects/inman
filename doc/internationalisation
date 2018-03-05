@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import gettext
+
+# Set up message catalog access
+t = gettext.translation('gettext_example', 'translation', ['fr'], fallback=True)
+_ = t.ugettext
+
+print _('This message is in the script.')
+print _('Now')
+
+xgettext -L Python -d gettext_example -o gettext_example.pot test_i18n.py
+
+cp gettext_example.pot translation/fr/LC_MESSAGES/gettext_example.po
+
+edit .po file
+
+msgfmt -o translation/fr/LC_MESSAGES/gettext_example.mo translation/fr/LC_MESSAGES/gettext_example.po

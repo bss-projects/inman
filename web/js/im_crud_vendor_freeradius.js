@@ -1,9 +1,151 @@
 $(function()
 {
+	l_vendor = new Array();
+
+	function radiusnameIsOK(radiusname)
+	{
+		if (radiusname != '')
+		{
+			return true;
+		}
+		else
+		{
+			return 'RADIUS name is missing';
+		}
+	}
+
+	function stringIsOK(string, entry_name, mandatory)
+	{
+		if (string != '')
+		{
+			if (! /^[a-z0-9!"#$%&'()*+,.\/:;<=>?@\[\] ^_`{|}~-]*$/i.test(string))
+			{
+				return entry_name+' format incorrect. Use only a-z0-9!"#$%&\'()*+,./:;<=>?@[] ^_`{|}~-';
+			}
+			return (true);
+		}
+		else if (mandatory == true)
+		{
+			return entry_name+' is missing';
+		}
+		else
+		{
+			return true;
+		}
+	}
+
+	function notassocIsOK(radiusname, vendorname, previous_radiusname, previous_vendorname) {
+		if (radiusname != '' && vendorname != '')
+		{
+			if (previous_radiusname != null && previous_vendorname != null)
+			{
+				if (radiusname.toLowerCase()+'-'+vendorname.toLowerCase() == previous_radiusname.toLowerCase()+'-'+previous_vendorname.toLowerCase()) 
+				{
+					return true;
+				}
+			}
+			if (l_vendor.includes(radiusname.toLowerCase()+'-'+vendorname.toLowerCase()))
+			{
+				return vendorname+' already associate to '+radiusname;
+			}
+		}
+		return true;
+	}
+
+	function vendor_flagIsOK(tab_flag)
+	{
+		var errno = new Array();
+		var flag_attribute_missing = true;
+		var block_name = Object.keys(tab_flag);
+		var nb_block = block_name.length
+
+		console.log(block_name);
+
+		for (var i = 0; i < nb_block; i++)
+		{
+			var t_list_attribute = Object.values(tab_flag[block_name[i]]);
+
+			if (t_list_attribute.length && flag_attribute_missing == true)
+			{
+				flag_attribute_missing = false
+			}
+
+			for (var j = 0; j < t_list_attribute.length; j++)
+			{
+				if ((ret = stringIsOK(t_list_attribute[j], 'Attribute in '+block_name[i], true)) != true)
+				{
+					errno.push(ret+'<br/>')
+				}
+			}
+		}
+
+		if (!block_name.length)
+		{
+			return 'Vendor flag block is missing';
+		}
+		else if (!errno.length)
+		{
+			return true;
+		}
+		else
+		{
+			return errno;
+		}
+	}
+
+	function check_input_form(radiusname, vendorname, tab_flag, previous_radiusname, previous_vendorname)
+	{
+		var flag_input_error = false;
+		var ret = '';
+		var errno = new Array();
+
+		if ((ret = radiusnameIsOK(radiusname)) != true)
+		{
+			flag_input_error = true;
+			errno.push(ret)
+		}
+
+		if ((ret = stringIsOK(vendorname, 'Vendor name', true)) != true)
+		{
+			flag_input_error = true;
+			errno.push(ret)
+		}
+		
+		if ((ret = notassocIsOK(radiusname, vendorname, previous_radiusname, previous_vendorname)) != true)
+		{
+			flag_input_error = true;
+			errno.push(ret)
+		}
+
+		if ( (ret = vendor_flagIsOK(tab_flag)) != true)
+		{
+			flag_input_error = true;
+			errno.push(ret)
+		}
+
+		if (flag_input_error)
+		{
+			return errno;	
+		}
+		else
+		{
+			return false;
+		}
+	}
 
 	$("#im_add_flag_vendor_bloc_freeradius").click(function(){
 
-		var block_title = $('#title_flag_block_freeradius').val();
+		var block_title = $('#title_flag_block_freeradius').val().trim();
+		$('#alert_input').hide();
+
+		if ((ret = stringIsOK(block_title, 'Block title ', true)) != true)
+		{
+			$('#alert_input').empty();
+			$('#alert_input').append('<p>Input error on following :</p>');
+			$('#alert_input').append('- '+ret+'</br>');
+			$('#alert_input').show();
+			return;
+		}
 
 		$('#tab_vendor_block_flag_freeradius > tbody:last').append('<tr> \
 																		<td> \
@@ -45,7 +187,7 @@ $(function()
 	});
 
 	$("#im_add_flag_vendor_bloc").click(function(){
-		var block_title = $('#title_flag_block').val();
+		var block_title = $('#title_flag_block').val().trim();
 		var list_block = $( this ).parent().parent().parent().eq(0).children('.list_bloc');
 
 		list_block.append('<div class="info_frame info_frame-dismissable col-lg-12"> \
@@ -136,17 +278,35 @@ $(function()
 		var vendorname = $('#name_vendor_freeradius').val();
 		var tab_flag = getTabVendorFlag($('#tab_vendor_block_flag_freeradius td'));
 
-		$.ajax({
-			url: "http://"+urlMaster+"/im_crud_vendor_freeradius/new",
-			contentType: 'application/json; charset=utf-8',
-			dataType: 'jsonp',
-			data: {'radiusname': radiusname, 'vendorname': vendorname, 'l_flag': JSON.stringify(tab_flag)},
-			async: false,
-			success: function(data)
+		var input_errno = false
+		input_errno = check_input_form(radiusname, vendorname, tab_flag, null, null)
+
+		if (input_errno == false)
+		{
+			$('#alert_input').hide();
+
+			$.ajax({
+				url: "http://"+urlMaster+"/im_crud_vendor_freeradius/new",
+				contentType: 'application/json; charset=utf-8',
+				dataType: 'jsonp',
+				data: {'radiusname': radiusname, 'vendorname': vendorname, 'l_flag': JSON.stringify(tab_flag)},
+				async: false,
+				success: function(data)
+				{
+					location.reload(true);
+				}
+			});
+		}
+		else
+		{
+			$('#alert_input').empty();
+			$('#alert_input').append('<p>Input error on following :</p>');
+			for (var i = input_errno.length - 1; i >= 0; i--)
 			{
-				location.reload(true);
+				$('#alert_input').append('- '+input_errno[i]+'</br>');
 			}
-		});
+			$('#alert_input').show();
+		}
 
 	});
 
@@ -194,8 +354,11 @@ $(function()
 				$('#edit_radiusname_vendor_freeradius').select2('data', {'id': radiusname, 'text': radiusname});
 				$('#edit_name_vendor_freeradius').val(vendorname);
 				$('#uid_edit_freeradius').val(uid);
+
+				$('#edit_previous_name_vendor_freeradius').val(vendorname);
+				$('#edit_previous_radiusname_vendor_freeradius').val(radiusname);
 				
-				var d_data = {'radius': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'edit_vendor', 'vendortoedit': vendorname, 'uid': uid};
+				var d_data = {'radiusname': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'edit_vendor', 'vendortoedit': vendorname, 'uid': uid};
 
 				$.ajax({
 						url: "http://"+urlMaster+"/im_get_vendor_Toedit_freeradius",
@@ -236,6 +399,8 @@ $(function()
 				$('#modal_edit_vendor_freeradius').modal('show');
 			});
 
+		});
+
 		$('.btn_delete_vendor').each(function( index ) {
 			$( this ).tooltip();
 			$( this ).click(function() {
@@ -245,15 +410,45 @@ $(function()
 				$('.radiusname_remove_freeradius').val($( this ).closest('tr').children().eq(0).text());
 				$('.uid_remove_freeradius').val($( this ).parent().children('.uid').eq(0).val());
 				$('#modal_delete_vendor_freeradius').modal('show');
+
+				var radiusname = $('.radiusname_remove_freeradius').val();
+				var vendorname = $('.vendor_remove_freeradius').val();
+
+				$('#remove_vendor_impact_list').empty();
+				$('#remove_vendor_impact_list').append("Nothing </br>");
+
+				$.ajax({
+					url: "http://"+urlMaster+"/im_list_right_for_vendor_freeradius",
+					contentType: 'application/json; charset=utf-8',
+					dataType: 'jsonp',
+					data: {'radiusname': radiusname, 'vendorname': vendorname},
+					async: false,
+					success: function(data)
+					{	
+						if (data['results'] != null)
+						{
+							$('#remove_vendor_impact_list').empty();
+							$('#remove_vendor_id_impact_list').empty();
+							for (var i = data['results'].length - 1; i >= 0; i--) 
+							{
+								$('#remove_vendor_impact_list').append(data['results'][i]['right_label']+"</br>");
+								$('#remove_vendor_id_impact_list').append('<input type="hidden" value="'+data['results'][i]['id']+'">');
+							}
+						}
+					}
+				});
 			});
 		});
 
-	});}).dataTable(
+	}).dataTable(
 	{
 		"processing": true,
 		"serverSide": false,
+		"createdRow": function(row, data, dataIndex){
+			l_vendor.push(data['radius'].toLowerCase()+'-'+data['vendeur'].toLowerCase());
+		},
 		"ajax": {
-					"url": "http://"+urlMaster+"/im_getlistinfo_freeradius/vendor_freeradius/vendor/all",
+					"url": "http://"+urlMaster+"/im_getlistinfo_freeradius/vendor_freeradius/vendor/",
 					"dataType": "jsonp",
 					"async": false
 		},
@@ -291,7 +486,7 @@ $(function()
 		var radiusname = $('#radiusname_remove_freeradius').val();
 		var uid = $('#uid_remove_freeradius').val();
 
-		var d_data = {'radius': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'delete_vendor', 'vendortodelete': vendorname, 'uid': uid};
+		var d_data = {'radiusname': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'delete_vendor', 'vendortodelete': vendorname, 'uid': uid};
 
 		$.ajax({
 			url: "http://"+urlMaster+"/im_delete_entry_freeradius",
@@ -301,6 +496,7 @@ $(function()
 			success: function(data)
 			{
 				console.log('success');
+				l_vendor = []
 				$('#modal_delete_vendor_freeradius').modal('hide');
 				var table = $('#dataTables-vendor_list_freeradius').dataTable().api();
 				table.ajax.reload();
@@ -333,23 +529,44 @@ $(function()
 	$( '#proceed_edit' ).click(function() {
 		var vendorname = $('#edit_name_vendor_freeradius').val();
 		var radiusname = $('#edit_radiusname_vendor_freeradius').val();
+		var previous_vendorname = $('#edit_previous_name_vendor_freeradius').val();
+		var previous_radiusname = $('#edit_previous_radiusname_vendor_freeradius').val();
 		var uid = $('#uid_edit_freeradius').val();
 		var tab_flag = getDivVendorFlag($('#modal_edit_vendor_freeradius .modal-dialog .modal-content .modal-body .row .manage_list_bloc .list_bloc'));
 
-		var d_data = {'radiusname': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'edit_vendor', 'vendorname': vendorname, 'uid': uid, 'l_flag': JSON.stringify(tab_flag)};
+		var input_errno = false
+		input_errno = check_input_form(radiusname, vendorname, tab_flag, previous_radiusname, previous_vendorname)
 
-		$.ajax({
-			url: "http://"+urlMaster+"/im_crud_vendor_freeradius/edit",
-			dataType: 'jsonp',
-			async: false,
-			data: d_data,
-			success: function(data)
+		if (input_errno == false)
+		{
+			$('#edit_alert_input').hide();
+
+			var d_data = {'radiusname': radiusname, 'collection': 'vendor_freeradius', 'action_type': 'edit_vendor', 'vendorname': vendorname, 'uid': uid, 'l_flag': JSON.stringify(tab_flag)};
+
+			$.ajax({
+				url: "http://"+urlMaster+"/im_crud_vendor_freeradius/edit",
+				dataType: 'jsonp',
+				async: false,
+				data: d_data,
+				success: function(data)
+				{
+					console.log('success');
+					l_vendor = []
+					$('#modal_edit_vendor_freeradius').modal('hide');
+					var table = $('#dataTables-vendor_list_freeradius').dataTable().api();
+					table.ajax.reload();
+				}
+			});
+		}
+		else
+		{
+			$('#edit_alert_input').empty();
+			$('#edit_alert_input').append('<p>Input error on following :</p>');
+			for (var i = input_errno.length - 1; i >= 0; i--)
 			{
-				console.log('success');
-				$('#modal_edit_vendor_freeradius').modal('hide');
-				var table = $('#dataTables-vendor_list_freeradius').dataTable().api();
-				table.ajax.reload();
+				$('#edit_alert_input').append('- '+input_errno[i]+'</br>');
 			}
-		});
+			$('#edit_alert_input').show();
+		}
 	});
 });

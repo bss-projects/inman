@@ -1,5 +1,6 @@
 $(function()
 {
+	var Csession = null;
 
 	function progress(percent, $element, info)
 	{
@@ -52,7 +53,7 @@ $(function()
 	$('#launch_sync').click(function() {
 		console.log(Csession);
 		$("#sync_div").show();
-		Csession.publish(uriTopicSCP, ['{"hostname": "localhost.lan", "distant_path_conf": "/appli/shinken/etc", "conf_file": "nagios.cfg", "agent_name": "Local Nagios", "agent_ip": "127.0.0.1", "agent_rpc_port": "9000", "agent_connection_type": "RPC"}']);
+		Csession.publish(uriTopicSCP, ['{"hostname": "supervisor.server.lan", "distant_path_conf": "/appli/shinken/etc", "conf_file": "nagios.cfg", "agent_name": "SUP Server", "agent_ip": "127.0.0.1", "agent_rpc_port": "9000", "agent_connection_type": "RPC"}']);
 
 	});
 

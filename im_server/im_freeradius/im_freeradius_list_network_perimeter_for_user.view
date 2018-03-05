@@ -1,0 +1,220 @@
+CREATE OR REPLACE FUNCTION list_network_perimeter_for_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+d_user_info = {}
+l_net_perim_for_user = []
+flag_add_user = True
+l_id_perim = []
+uid = 0
+
+d_user_info = json.loads(TD['new']['user_info'])
+d_user_id = TD['new']['id']
+
+if 'network_perimeter' in d_user_info :
+ res = plpy.execute("SELECT id, view_data FROM matview WHERE name = 'list_network_perimeter_for_user_freeradius'")
+
+ if res :
+  for row in res:
+   uid = row['id']
+   l_net_perim_for_user = json.loads(row['view_data'])
+
+  i = 0
+  for net_perim_for_user in l_net_perim_for_user :
+   for network_perimeter in d_user_info['network_perimeter'] :
+    if net_perim_for_user['id'] == network_perimeter['uid'] :
+     l_id_perim.append(network_perimeter['uid'])
+     for user in net_perim_for_user['list_user'] :
+      flag_add_user = True
+      if user['id'] == d_user_id :
+       flag_add_user = False
+
+     if flag_add_user:
+      l_net_perim_for_user[i]['list_user'].append({'id': d_user_id, 'username': d_user_info['username']})
+
+   i += 1
+
+  for network_perimeter in d_user_info['network_perimeter'] :
+   if network_perimeter['uid'] not in l_id_perim :
+    l_net_perim_for_user.append({'id': network_perimeter['uid'], 'network_perimeter_name': network_perimeter['perimeter_name'], 'list_user': [{'id': d_user_id, 'username': d_user_info['username']}]})
+
+  l_net_perim_for_user = json.dumps(l_net_perim_for_user)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_net_perim_for_user +"') WHERE id = "+ str(uid) +"")
+
+ else :
+  for network_perimeter in d_user_info['network_perimeter']:
+   l_net_perim_for_user.append({'id': network_perimeter['uid'], 'network_perimeter_name': network_perimeter['perimeter_name'], 'list_user': [{'id': d_user_id, 'username': d_user_info['username']}]})
+
+  l_net_perim_for_user = json.dumps(l_net_perim_for_user)
+  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_network_perimeter_for_user_freeradius', '"+ l_net_perim_for_user +"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER list_network_perimeter_for_user_freeradius
+AFTER INSERT ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE list_network_perimeter_for_user_freeradius();
+
+
+
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION update_network_perimeter_for_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+fd = open('/tmp/test_trigger', 'a')
+
+d_user_info_new = json.loads(TD['new']['user_info'])
+d_user_info_old = json.loads(TD['old']['user_info'])
+d_user_id = TD['new']['id']
+l_net_perim_for_user = []
+flag_new_perimeter = True
+flag_new_perimeter_list_id = []
+rest_in_list = []
+d_id_perim_name = {}
+
+fd.write('{0} {1} {2}'.format(d_user_id, d_user_info_new, d_user_info_old))
+
+
+res = plpy.execute("SELECT id, view_data FROM matview WHERE name = 'list_network_perimeter_for_user_freeradius'")
+
+if res :
+ for row in res:
+  uid = row['id']
+  l_net_perim_for_user = json.loads(row['view_data'])
+
+ l_perim_old = []
+ l_perim_new = []
+
+ if 'network_perimeter' in d_user_info_new :
+  for network_perimeter in d_user_info_new['network_perimeter']:
+   l_perim_new.append(network_perimeter['uid'])
+   d_id_perim_name[network_perimeter['uid']] = network_perimeter['perimeter_name']
+
+ if 'network_perimeter' in d_user_info_old :
+  for network_perimeter in d_user_info_old['network_perimeter']:
+   l_perim_old.append(network_perimeter['uid'])
+
+ l_perim_del_after_update = list(set(l_perim_old) - set(l_perim_new))
+ l_perim_add_after_update = list(set(l_perim_new) - set(l_perim_old))
+
+ fd.write('To add -> {0} \n To delete -> {1} \n'.format(l_perim_add_after_update, l_perim_del_after_update))
+
+ i = 0
+ for net_perim_for_user in l_net_perim_for_user :
+  if net_perim_for_user['id'] in l_perim_del_after_update:
+   j = 0
+   for user in net_perim_for_user['list_user']:
+    if user['id'] == d_user_id :
+     fd.write('User to del detected : {0}'.format(d_user_id))
+     del net_perim_for_user['list_user'][j]
+    j += 1
+   if net_perim_for_user['list_user'] != [] :
+    l_net_perim_for_user[i]['list_user'] = net_perim_for_user['list_user']
+   else :
+    del l_net_perim_for_user[i]
+  i += 1
+
+ i = 0
+ for net_perim_for_user in l_net_perim_for_user :
+  if net_perim_for_user['id'] in l_perim_add_after_update:
+   flag_new_perimeter_list_id.append(net_perim_for_user['id'])
+   l_net_perim_for_user[i]['list_user'].append({'id': d_user_id, 'username': d_user_info_new['username']})
+  if l_perim_add_after_update == [] and l_perim_del_after_update == [] and net_perim_for_user['id'] in d_id_perim_name :
+   l_net_perim_for_user[i]['network_perimeter_name'] = d_id_perim_name[net_perim_for_user['id']]
+  i += 1
+
+ rest_in_list = list(set(l_perim_add_after_update) - set(flag_new_perimeter_list_id))
+
+ if rest_in_list:
+  for id in rest_in_list :
+   l_net_perim_for_user.append({'id': id, 'network_perimeter_name': d_id_perim_name[id], 'list_user': [{'id': d_user_id, 'username': d_user_info_new['username']}]})
+
+ l_net_perim_for_user = json.dumps(l_net_perim_for_user)
+ res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_net_perim_for_user +"') WHERE id = "+ str(uid) +"")
+
+else :
+ if 'network_perimeter' in d_user_info_new :
+  for network_perimeter in d_user_info_new['network_perimeter']:
+   l_net_perim_for_user.append({'id': network_perimeter['uid'], 'network_perimeter_name': network_perimeter['perimeter_name'], 'list_user': [{'id': d_user_id, 'username': d_user_info_new['username']}]})
+
+  l_net_perim_for_user = json.dumps(l_net_perim_for_user)
+  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_network_perimeter_for_user_freeradius', '"+ l_net_perim_for_user +"')")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER update_network_perimeter_for_user_freeradius
+AFTER UPDATE ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE update_network_perimeter_for_user_freeradius();
+
+
+
+
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION delete_network_perimeter_for_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_perim = []
+l_net_perim_for_user = []
+
+#fd = open('/tmp/test_trigger', 'a')
+
+d_user_info = json.loads(TD['old']['user_info'])
+d_user_id = TD['old']['id']
+
+if 'network_perimeter' in d_user_info :
+
+ res = plpy.execute("SELECT id, view_data FROM matview WHERE name = 'list_network_perimeter_for_user_freeradius'")
+
+ if res :
+  for row in res:
+   uid = row['id']
+   l_net_perim_for_user = json.loads(row['view_data'])
+
+  for network_perimeter in d_user_info['network_perimeter']:
+   l_perim.append(network_perimeter['uid'])
+
+  i = 0
+  for net_perim_for_user in l_net_perim_for_user :
+   if net_perim_for_user['id'] in l_perim:
+    j = 0
+    for user in net_perim_for_user['list_user']:
+     if user['id'] == d_user_id :
+#      fd.write('User to del detected : {0}'.format(d_user_id))
+      del net_perim_for_user['list_user'][j]
+     j += 1
+    l_net_perim_for_user[i]['list_user'] = net_perim_for_user['list_user']
+   i += 1
+
+  l_net_perim_for_user = json.dumps(l_net_perim_for_user)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_net_perim_for_user +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER delete_network_perimeter_for_user_freeradius
+AFTER DELETE ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE delete_network_perimeter_for_user_freeradius();

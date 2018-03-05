@@ -3,6 +3,7 @@
 
 import bottle as inman
 import cgi
+import datetime
 import gc
 import gettext
 import json
@@ -19,6 +20,7 @@ from beaker.middleware import SessionMiddleware
 from bottle import Bottle, route, run, template, request, response, static_file, redirect
 from im_agentdialogclass import ClassAgent, ClassAgentFreeradius
 from im_dbclass import DBManagement, DBManagement_postgres
+from im_user_trace_action_class import ClassUserTraceAction
 from jinja2 import Environment, FileSystemLoader, Template
 from os import listdir
 from os.path import isfile, join
@@ -31,7 +33,7 @@ session_opts = {
 	'session.auto': True
 }
 
-CAS_SERVER  = 'https://cas-server.lan:443/websso'
+CAS_SERVER  = 'https://cas.server.lan:443/websso'
 SERVICE_URL = 'http://inman.lan/cas_login'
 
 
@@ -66,6 +68,7 @@ try:
 	setproctitle.setproctitle('IM Master')
 	IMDB = DBManagement(database='inman')
 	IMDB_psg = DBManagement_postgres()
+	trace_action = ClassUserTraceAction(IMDB_psg, logger)
 	app = inman.default_app()
 	app = SessionMiddleware(app, session_opts)
 
@@ -78,7 +81,6 @@ try:
 except Exception, e:
 	logger.info('Failed to initialize Inman server : {0}'.format(e))
 	raise e
-
 
 
 @inman.route('/web/<filepath:path>')
@@ -321,7 +323,102 @@ def insertConfInDB(db_collection_name, agent_alias, l_confInfo):
 ### *********************************************
 #################################################
 
+def check_radiusname_client_fileimport(radiusname, l_radiusname):
+	if radiusname != '':
+		for radiusname_in_list in l_radiusname:
+			if radiusname.lower() == radiusname_in_list.lower():
+				return {'status': True, 'strstatus': radiusname_in_list}
+		return {'status': False, 'strstatus': 'RADIUS name is unknown'}
+	else:
+		return {'status': False, 'strstatus': 'RADIUS name is missing'}
 
+def check_vendor_client_fileimport(vendorname, l_vendorname):
+	if vendorname != '':
+		for vendorname_in_list in l_vendorname:
+			if vendorname.lower() == vendorname_in_list.lower():
+				return {'status': True, 'strstatus': vendorname_in_list}
+		return {'status': False, 'strstatus': 'Vendorname is unknown'}
+	else:
+		return {'status': False, 'strstatus': 'Vendorname is missing'}
+
+def check_client_ip_client_fileimport(ip, l_client_ip):
+	if ip != '':
+		if not re.match('^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$', ip):
+			return {'status': False, 'strstatus': 'IP format is incorrect'}
+
+		if ip in l_client_ip:
+			return {'status': False, 'strstatus': 'IP is already in use'}
+		else:
+			return {'status': True, 'strstatus': ip}
+	else:
+		return {'status': False, 'strstatus': 'IP is missing'}
+
+def check_string_client_fileimport(string, field_name):
+	if string != '':
+		if not re.match('^[a-z0-9!"#$%&\'()*+,./:;<=>?@\[\] ^_`{|}~-]*$', string, re.IGNORECASE):
+			return {'status': False, 'strstatus': '{0} format is incorrect'.format(field_name)}
+
+	return {'status': True, 'strstatus': string}
+
+def client_data_to_import_ok_freeradius(client_line_to_check):
+	l_radiusname = []
+	l_client_ip = []
+	l_vendor = []
+
+	session = inman.request.environ.get('beaker.session')
+	user_rights = getUserSessionRight(session['login'])
+
+	for plugin_right in user_rights['rights']:
+		if plugin_right['plugin_name'] == 'freeradius':
+			l_radiusname = plugin_right['agent']
+			break
+
+	l_result = getClientList_freeradius(plugin='freeradius')
+	for result in l_result:
+		if result['radiusname'] in l_radiusname:
+			l_client_ip.append(result['ip'])
+
+	l_result = getVendorList_freeradius(plugin='freeradius')
+	for result in l_result:
+		if result['radiusname'] in l_radiusname:
+			l_vendor.append(result['vendorname'])
+
+	radius_check_state = check_radiusname_client_fileimport(client_line_to_check['radiusname'], l_radiusname)
+
+	client_ip_check_state = check_client_ip_client_fileimport(client_line_to_check['ip'], l_client_ip)
+
+	vendor_check_state = check_vendor_client_fileimport(client_line_to_check['vendorname'], l_vendor)
+
+	name_check_state = check_string_client_fileimport(client_line_to_check['name'], 'Name')
+
+	shortname_check_state = check_string_client_fileimport(client_line_to_check['shortname'], 'Shortname')
+
+	sharedsecret_check_state = check_string_client_fileimport(client_line_to_check['sharedsecret'], 'Sharedsecret')
+
+	l_check_return = [radius_check_state, client_ip_check_state, vendor_check_state, name_check_state, shortname_check_state, sharedsecret_check_state]
+
+	if radius_check_state['status'] == False or client_ip_check_state['status'] == False or vendor_check_state['status'] == False or name_check_state['status'] == False or shortname_check_state['status'] == False or sharedsecret_check_state['status'] == False:
+
+		l_check_name = ['radiusname', 'ip', 'vendorname', 'name', 'shortname', 'sharedsecret']
+
+		ret = {'status': False, 'strstatus': {}}
+
+		i = 0
+		for check_return in l_check_return:
+			if check_return['status'] == False:
+				ret['strstatus'][l_check_name[i]] = check_return['strstatus']
+			i += 1
+
+		return ret
+	else :
+		return {'status': True, 'strstatus': {'radiusname': radius_check_state['strstatus'],\
+												'name': name_check_state['strstatus'],\
+												'shortname': shortname_check_state['strstatus'],\
+												'ip': client_ip_check_state['strstatus'],\
+												'vendorname': vendor_check_state['strstatus'],\
+												'sharedsecret': sharedsecret_check_state['strstatus']
+												}\
+				}
 
 
 def import_file_csv_data_client_freeradius(path_file):
@@ -331,6 +428,9 @@ def import_file_csv_data_client_freeradius(path_file):
 	place_important_type = []
 	header = []
 	l_file_data = []
+	l_file_line_to_be_insert = []
+	l_error_file_data = []
+	l_radiusname = []
 	tmp = {}
 	i = 0
 
@@ -352,14 +452,27 @@ def import_file_csv_data_client_freeradius(path_file):
 						place_important_type.append(c)
 					c += 1
 				flag_column_header = 1
+				for itype in important_type:
+					if itype not in header:
+						response.status = '444 '+_('Save failure')+' - '+_('Header missing')+' - '+itype
+						res.append(_('Save failure')+' - '+_('Header missing')+' - '+itype)
+						val_ret["result"] = res
+						return jsonp(request, val_ret)
 			else:
 				l_line = line.split(';')
 				for place in place_important_type:
 					tmp[header[place].strip('\"')] = l_line[place].strip('\"')
 
-				l_file_data.append(json.dumps(tmp.copy()).replace('\'', '\'\''))
+				report_check_data_import = client_data_to_import_ok_freeradius(tmp)
 
-				i += 1
+				if report_check_data_import['status'] == True:
+					l_file_line_to_be_insert.append({'line': i+1, 'data': report_check_data_import['strstatus'].copy()})
+					l_file_data.append(json.dumps(report_check_data_import['strstatus'].copy()).replace('\'', '\'\''))
+					l_radiusname.append(report_check_data_import['strstatus']['radiusname'])
+				else:
+					l_error_file_data.append({'line': i+1, 'error': report_check_data_import['strstatus'].copy()})
+
+			i += 1
 
 		doc['client_info'] = l_file_data
 
@@ -368,6 +481,9 @@ def import_file_csv_data_client_freeradius(path_file):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		val_ret["error_data_results"] = l_error_file_data
+		val_ret["insert_data_results"] = l_file_line_to_be_insert
+		val_ret["radius_list"] = l_radiusname
 		return jsonp(request, val_ret)
 	except Exception, e:
 		print e
@@ -391,7 +507,33 @@ def getDocInDB_freeradius(uid, db_collection_name, doc_field_name):
 
 	l_results = IMDB_psg.search(collection=db_collection_name, search_parameter=d_search_options)
 
-	return l_results[0][0]
+	if len(l_results):
+		return l_results[0][0]
+	else:
+		return l_results
+
+def getMultiDocInDBInIDList_freeradius(l_id, db_collection_name, doc_field_name):
+	l_results = []
+	d_search_options = {}
+
+	d_search_options['fields'] = doc_field_name
+	d_search_options['filter'] = 'id IN ({0})'.format(str(u', '.join(l_id)))
+
+	ret = IMDB_psg.search(collection=db_collection_name, search_parameter=d_search_options)
+
+####
+## *******************************************
+####
+#[({u'username': u'test', u'network_perimeter': [{u'perimeter_name': u'Subnet Test - 192.168.42.12/192.168.50.255', u'uid': 9}, {u'perimeter_name': u'List Test - 192.168.42.42, ...', u'uid': 10}], u'isldap': u'false', u'radiusname': u'Radius IRIS Recette', u'right': u'rwAll_admin', u'password': u'test'},),
+# ({u'username': u'test1', u'network_perimeter': [{u'perimeter_name': u'List Test - 192.168.42.42, ...', u'uid': 10}, {u'perimeter_name': u'Subnet Test - 192.168.42.12/192.168.50.255', u'uid': 9}], u'isldap': u'false', u'radiusname': u'Radius IRIS Recette', u'right': u'rwInt_admin', u'password': u'test'},)]
+
+####
+## *******************************************
+####
+	for row in ret:
+		l_results.append({'id': row[0], 'doc': row[1]})
+
+	return l_results
 
 @inman.post('/im_get_doc_freeradius')
 @inman.get('/im_get_doc_freeradius')
@@ -400,17 +542,58 @@ def A_getDoc_freeradius():
 	val_ret = {"more": False, "results":[], 'doc': {}}
 	oldID = None
 
-	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
-
 	uid = request.query.get('uid')
 	collection = request.query.get('collection')
 	fields = request.query.get('fields')
 
 	doc = getDocInDB_freeradius(uid, collection, fields)
 
-	val_ret['doc'] = doc.copy()
+	if isinstance(doc, dict):
+		val_ret['doc'] = doc.copy()
+	else:
+		val_ret['doc'] = doc
 
 	return jsonp(request, val_ret)
+
+@inman.post('/im_get_network_perimeter_Toedit_freeradius')
+@inman.get('/im_get_network_perimeter_Toedit_freeradius')
+def A_getNetwork_perimeterToEdit_freeradius():
+	d_search_options = {}
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[], 'data': ''}
+	res = []
+
+	collection = request.query.get('collection')
+	perimeterToedit = request.query.get('network_perimetertoedit')
+	radiusname = request.query.get('radiusname')
+	uid = request.query.get('uid')
+
+	d_search_options['filter'] = 'id = \''+ uid +'\''
+	d_search_options['fields'] = 'network_perimeter_info'
+
+	try:
+		ret = IMDB_psg.search(collection, d_search_options)
+		response.status = '202 '+_('Select in database')
+		res.append(_('Select in database'))
+		val_ret["results"] = res
+		l_ip_list = ret[0][0]['ip_list']
+		val_ret['ip_list'] = l_ip_list
+		for ip in l_ip_list:
+
+			val_ret['data'] +='<tr> \
+								<td>'+ip+'</td> \
+								<td><i class="fa fa-times-circle-o fa-fw delete_ip_from_perimeter_freeradius clickable"></i></td>\
+								</tr>'
+
+		return jsonp(request, val_ret)
+	except Exception, e:
+		print e
+		response.status = '444 '+_('Connection Failed')
+		res.append(_('Select failure')+' - '+_('Connection Failed'))
+		val_ret["results"] = res
+		return jsonp(request, val_ret)
+
+
 
 @inman.post('/im_get_vendor_Toedit_freeradius')
 @inman.get('/im_get_vendor_Toedit_freeradius')
@@ -422,7 +605,7 @@ def A_getVendorToEdit_freeradius():
 
 	collection = request.query.get('collection')
 	vendorToedit = request.query.get('vendortoedit')
-	radiusname = request.query.get('radius')
+	radiusname = request.query.get('radiusname')
 	uid = request.query.get('uid')
 
 	d_search_options['filter'] = 'id = \''+ uid +'\''
@@ -488,8 +671,9 @@ def A_deleteRightInDB_freeradius():
 	collection = request.query.get('collection')
 	vendorname = request.query.get('vendorname')
 	label = request.query.get('label')
-	radiusname = request.query.get('radius')
+	radiusname = request.query.get('radiusname')
 	uid = request.query.get('uid')
+	session = inman.request.environ.get('beaker.session')
 
 
 	d_search_options['filter'] = 'id = \''+ str(uid) +'\''
@@ -513,12 +697,14 @@ def A_deleteRightInDB_freeradius():
 		response.status = '202 '+_('Delete in database')
 		res.append(_('Delete in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', 'Delete right', doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_deleteRightInDB_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Delete failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* Delete right', doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 @inman.post('/im_delete_entry_freeradius')
@@ -532,8 +718,9 @@ def A_deleteEntryInDB_freeradius():
 
 	collection = request.query.get('collection')
 	vendorTodelete = request.query.get('vendortodelete')
-	radiusname = request.query.get('radius')
+	radiusname = request.query.get('radiusname')
 	uid = request.query.get('uid')
+	session = inman.request.environ.get('beaker.session')
 
 	d_search_options['filter'] = 'id = \''+ uid +'\''
 
@@ -542,13 +729,27 @@ def A_deleteEntryInDB_freeradius():
 		response.status = '202 '+_('Delete in database')
 		res.append(_('Delete in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', 'Delete in {0}'.format(collection), vendorTodelete, agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_deleteEntryInDB_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Delete failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* Delete in {0}'.format(collection), vendorTodelete, agent=radiusname)
 		return jsonp(request, val_ret)
+
+def concact_dbname4matview_info(l_dbname_info):
+	db_name = ''
+	length = len(l_dbname_info) - 1
+
+	for i in xrange(0, length):
+		if i < length - 1:
+			db_name += l_dbname_info[i]+'_'
+		else:
+			db_name += l_dbname_info[i]
+
+	return db_name
 
 def getList_freeradius(db_collection_name, plugin='all', user='all', filter=None, fields='*'):
 	i = 0
@@ -561,17 +762,19 @@ def getList_freeradius(db_collection_name, plugin='all', user='all', filter=None
 	if l_dbname_info[0] == 'users':
 		l_dbname_info[0] = 'user'
 
+	dbname_info = concact_dbname4matview_info(l_dbname_info)
+
 	l_agent = getAgentList_freeradius(plugin=plugin)
 	length = len(l_agent)
 
 	for agent in l_agent:
 		i += 1
 		if  length > i:
-			d_search_options['filter'] += '{0}_info->>\'radiusname\' = \'{1}\' OR '.format(l_dbname_info[0], agent['agent_name'])
+			d_search_options['filter'] += '{0}_info->>\'radiusname\' = \'{1}\' OR '.format(dbname_info, agent['agent_name'])
 		else :
-			d_search_options['filter'] += '{0}_info->>\'radiusname\' = \'{1}\''.format(l_dbname_info[0], agent['agent_name'])
+			d_search_options['filter'] += '{0}_info->>\'radiusname\' = \'{1}\''.format(dbname_info, agent['agent_name'])
 
-	if length == 0:
+	if length == 0 or filter != None:
 		d_search_options['filter'] = filter
 
 	d_search_options['plugin'] = plugin
@@ -581,6 +784,248 @@ def getList_freeradius(db_collection_name, plugin='all', user='all', filter=None
 	l_results = IMDB_psg.search(collection=db_collection_name, search_parameter=d_search_options)
 
 	return l_results
+
+
+@inman.post('/im_impact_network_perimeter_on_user/<action>')
+@inman.get('/im_impact_network_perimeter_on_user/<action>')
+def A_manageImpactOnUser4NetworkPerimeterEdition_freeradius(action):
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+
+	doc = {}
+	d_search_options = {}
+
+	network_perimeter_id = int(request.query.get('uid'))
+	l_user_id_impact = json.loads(request.query.get('list_user_id_impact'))
+	label = request.query.get('label')
+	ip = request.query.get('ip')
+	db_collection_name = 'users_freeradius'
+	doc_field_name = 'id, user_info'
+
+	if l_user_id_impact :
+
+		l_result = getMultiDocInDBInIDList_freeradius(l_user_id_impact, db_collection_name, doc_field_name)
+
+		for result in l_result :
+			user_id = result['id']
+			user_info = result['doc']
+			i = 0
+			for perimeter in user_info['network_perimeter'] :
+				if perimeter['uid'] == network_perimeter_id :
+					if action == 'delete' :
+						del user_info['network_perimeter'][i]
+					elif action == 'edit':
+						user_info['network_perimeter'][i]['perimeter_name'] = '{0} - {1}'.format(label, ip)
+				
+					doc['user_info'] = json.dumps(user_info).replace('\'', '\'\'')
+					d_search_options['filter'] = 'id = \''+ str(user_id) +'\''
+					ret = IMDB_psg.update(collection=db_collection_name, doc=doc, search_parameter=d_search_options)
+
+				i += 1
+			print '{0} : {1}\n'.format(user_id, user_info)
+	else :
+		print 'List User KO'
+
+#	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_right_for_vendor_freeradius')
+@inman.get('/im_list_right_for_vendor_freeradius')
+def A_getRightList4Vendor_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+
+	radiusname = request.query.get('radiusname')
+	vendorname = request.query.get('vendorname')
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getRightList4Vendor_freeradius(radiusname, vendorname)
+
+	for result in l_result:
+		vendor_id = result[0]
+		right_list = result[1]['right_list']
+		for right in right_list:
+			if right['label'] != 'list_flag':
+				res.append({'id': vendor_id, 'right_label': right['label']})
+
+	if not len(res):
+		res = None
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_client_for_right_freeradius')
+@inman.get('/im_list_client_for_right_freeradius')
+def A_getClientList4Right_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+
+	radiusname = request.query.get('radiusname')
+	vendorname = request.query.get('vendorname')
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getClientList4Right_freeradius(radiusname, vendorname)
+
+	for result in l_result:
+		client_id = result[0]
+		client_name = result[1]['client_name']
+		client_ip = result[1]['client_ip']
+		res.append({'id': client_id, 'client_name': client_name, 'client_ip': client_ip})
+
+	if not len(res):
+		res = None
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_user_for_network_perimeter_freeradius')
+@inman.get('/im_list_user_for_network_perimeter_freeradius')
+def A_getUserList4NetworkPerimeter_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+
+	radiusname = request.query.get('radiusname')
+	id_network_perimeter = int(request.query.get('id_network_perimeter'))
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getUserList4NetworkPerimeter_freeradius(plugin='freeradius')
+
+	for result in l_result:
+		if result['id'] == id_network_perimeter :
+			for user in result['list_user']:
+				res.append(user)
+
+	if not len(res):
+		res = None
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_client_for_shared_secret_freeradius')
+@inman.get('/im_list_client_for_shared_secret_freeradius')
+def A_getClientList4SharedSecret_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+
+	radiusname = request.query.get('radiusname')
+	id_shared_secret = int(request.query.get('id_shared_secret'))
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getClientList4SharedSecret_freeradius(id_shared_secret)
+
+	if not len(l_result):
+		l_result = None
+
+	val_ret["results"] = l_result
+
+	return jsonp(request, val_ret)
+
+def getRightList4Vendor_freeradius(radiusname, vendorname):
+	d_search_options = {}
+
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['fields'] = 'id, json_build_object(\'right_list\', vendor_info->\'l_flag_level\')'
+	d_search_options['filter'] = 'vendor_info->>\'radiusname\' = \'{0}\' AND vendor_info->>\'vendorname\' = \'{1}\''.format(radiusname, vendorname)
+
+	res = IMDB_psg.search(collection='vendor_freeradius', search_parameter=d_search_options)
+
+	if res :
+		return res
+	else :
+		return []
+
+
+def getClientList4Right_freeradius(radiusname, vendorname):
+
+	d_search_options = {}
+
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['fields'] = 'id, json_build_object(\'client_name\', client_info->\'name\', \'client_ip\', client_info->\'ip\')'
+	d_search_options['filter'] = 'client_info->>\'radiusname\' = \'{0}\' AND client_info->>\'vendorname\' = \'{1}\''.format(radiusname, vendorname)
+
+	res = IMDB_psg.search(collection='client_freeradius', search_parameter=d_search_options)
+
+	if res :
+		return res
+	else :
+		return []
+
+def getClientList4SharedSecret_freeradius(id_shared_secret):
+
+	d_search_options = {}
+	l_client_for_shared_secret_res = []
+	ret = []
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['fields'] = 'json_build_object(\'id\', id, \'client_name\', client_info->>\'name\', \'client_ip\', client_info->>\'ip\')'
+	d_search_options['filter'] = 'client_info->>\'sharedsecret\' <> NULL OR client_info->>\'sharedsecret\' <> \'\' AND CAST(client_info->>\'sharedsecret\' AS integer) = \'{0}\''.format(id_shared_secret)
+
+	l_client_for_shared_secret_res = IMDB_psg.search(collection='client_freeradius', search_parameter=d_search_options)
+
+	if l_client_for_shared_secret_res :
+		for client in l_client_for_shared_secret_res:
+			ret.append(client[0])
+
+	return ret
+
+def getUserList4NetworkPerimeter_freeradius(plugin='all', user='all'):
+
+	d_search_options = {}
+	l_network_perimeter = []
+	l_user_for_network_perimeter_res = []
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['plugin'] = plugin
+	d_search_options['user'] = user
+	d_search_options['view'] = 'list_network_perimeter_for_user'
+
+	if plugin != 'all':
+		d_search_options['view'] = d_search_options['view']+'_'+plugin
+
+	d_search_options['fields'] = 'view_data'
+	d_search_options['filter'] = 'name = \''+ d_search_options['view'] +'\''
+
+	l_user_for_network_perimeter_res = IMDB_psg.search(collection='matview', search_parameter=d_search_options)
+
+	if l_user_for_network_perimeter_res :
+		return l_user_for_network_perimeter_res[0][0]
+	else :
+		return l_user_for_network_perimeter_res
+
 
 def getRightList_freeradius(plugin='all', user='all'):
 
@@ -604,7 +1049,7 @@ def getRightList_freeradius(plugin='all', user='all'):
 	l_right_res = IMDB_psg.search(collection='matview', search_parameter=d_search_options)	
 
 	for right in l_right_res[0][0]:
-		l_right.append({'right' : right})
+		l_right.append(right)
 
 	return l_right
 
@@ -630,9 +1075,56 @@ def getVendorList_freeradius(plugin='all', user='all'):
 	l_vendor_res = IMDB_psg.search(collection='matview', search_parameter=d_search_options)	
 
 	for vendor in l_vendor_res[0][0]:
-		l_vendor.append({'vendorname' : vendor})
+		l_vendor.append(vendor)
 
 	return l_vendor
+
+def getSharedsecretList_freeradius(plugin='all', user='all'):
+
+	d_search_options = {}
+	l_shared_secret = []
+
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['fields'] = 'json_build_object(\'id\', id, \'radiusname\', shared_secret_info->\'radiusname\', \'name\', shared_secret_info->\'name\')'
+	d_search_options['filter'] = 'all'
+
+	res = IMDB_psg.search(collection='shared_secret_freeradius', search_parameter=d_search_options)
+
+	if res :
+		for data in res:
+			l_shared_secret.append(data[0])
+
+	return l_shared_secret
+
+def getUserList_freeradius(plugin='all', user='all'):
+
+	d_search_options = {}
+	l_user = []
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['plugin'] = plugin
+	d_search_options['user'] = user
+	d_search_options['view'] = 'list_user'
+
+	if plugin != 'all':
+		d_search_options['view'] = d_search_options['view']+'_'+plugin
+
+	d_search_options['fields'] = 'view_data'
+	d_search_options['filter'] = 'name = \''+ d_search_options['view'] +'\''
+
+	l_user_res = IMDB_psg.search(collection='matview', search_parameter=d_search_options)	
+
+	for user in l_user_res[0][0]:
+		l_user.append(user)
+
+	return l_user
 
 def getVendorFlagList_freeradius(plugin='all', user='all'):
 
@@ -661,6 +1153,31 @@ def getVendorFlagList_freeradius(plugin='all', user='all'):
 
 	return l_flag_vendor
 
+def getClientList_freeradius(plugin='all', user='all'):
+
+	d_search_options = {}
+	l_client = []
+###
+# @ToDo Par defaut la fonction renvois tous les agent mais s'il sagit d'une requete
+# avec un user en param alors on renvois juste les superviseurs pour ce user
+###
+
+	d_search_options['plugin'] = plugin
+	d_search_options['user'] = user
+	d_search_options['view'] = 'list_client'
+
+	if plugin != 'all':
+		d_search_options['view'] = d_search_options['view']+'_'+plugin
+
+	d_search_options['fields'] = 'view_data'
+	d_search_options['filter'] = 'name = \''+ d_search_options['view'] +'\''
+
+	l_client_res = IMDB_psg.search(collection='matview', search_parameter=d_search_options)	
+
+	for client in l_client_res[0][0]:
+		l_client.append(client)
+
+	return l_client
 
 def getAgentList_freeradius(plugin='all', user='all'):
 
@@ -676,11 +1193,139 @@ def getAgentList_freeradius(plugin='all', user='all'):
 
 	return l_agent
 
+###
+# Fonction devant devenir generique pour la recuperation user action pour tous les plugins
+###
+@inman.post('/im_get_action_user_trace/<uid>')
+@inman.get('/im_get_action_user_trace/<uid>')
+def A_getActionUserTrace(uid):
+	response.content_type = 'application/json'
 
-@inman.post('/im_getlistinfo_freeradius/<data>/<cat>/<radiusname>')
-@inman.get('/im_getlistinfo_freeradius/<data>/<cat>/<radiusname>')
-def A_getListInfo_freeradius(data, cat, radiusname='all'):
+	action_info = trace_action.get_action(uid)
+	action_data = action_info[0][0]['action_data']
+
+	try:
+		action_data = json.loads(action_data)
+	except Exception, e:
+		pass
+
+
+	return jsonp(request, action_data)
+
+###
+# Fonction devant devenir generique pour la recuperation user action pour tous les plugins
+###
+@inman.post('/im_get_list_user_trace/<plugin>')
+@inman.get('/im_get_list_user_trace/<plugin>')
+def A_getListUserTrace(plugin=None):
+	d_search_options = {'fields': ''}
+	flag_nosearch = True
+	l_agent = getAgentList_freeradius(plugin=plugin)
+	l_search_filter = []
+	recordsTotal = 0
+	res = {}
+	response.content_type = 'application/json'
+	s_filter = ''
+	str_l_agent_to_filter = ''
+	val_ret = {'draw': 10, 'recordsTotal': 0, 'recordsFiltered': 10, 'data': []}
+
+
+	agent = request.query.get('agent')
+	username = request.query.get('username')
+	timestamp_begin = request.query.get('timestamp_begin')
+	timestamp_end = request.query.get('timestamp_end')
+
+	if agent:
+		flag_nosearch = False
+
+	type_list = {'user_trace_action_freeradius': \
+					{'columns': \
+						{'date': 'date',\
+						'agent': 'radius',\
+						'login': 'utilisateur',\
+						'action': 'événement'\
+						}\
+					}\
+				}
+
+	if flag_nosearch:
+		length = len(l_agent)
+		i = 0
+
+		for agent in l_agent:
+			i += 1
+			str_l_agent_to_filter += '\'{0}\''.format(agent['agent_name'])
+			if i < length:
+				str_l_agent_to_filter += ', '
+
+		d_search_options['filter'] = 'user_trace_action_info->>\'agent\' IN ({0}) AND user_trace_action_info->>\'plugin\' = \'{1}\''.format(str_l_agent_to_filter, plugin.title())
+	else:
+		if agent != '':
+			l_search_filter.append('user_trace_action_info->>\'agent\' = \'{0}\''.format(agent))
+		if username != '':
+			l_search_filter.append('user_trace_action_info->>\'login\' = \'{0}\''.format(username))
+
+		l_search_filter.append('CAST(user_trace_action_info->>\'date\' AS float) >= {0} AND CAST(user_trace_action_info->>\'date\' AS float) <= {1}'.format(timestamp_begin, timestamp_end))
+
+		length = len(l_search_filter)
+		i = 0
+
+		for search_filter in l_search_filter:
+			i += 1
+			s_filter += search_filter
+			if i < length:
+				s_filter += ' AND '
+
+			d_search_options['filter'] = '{0} AND user_trace_action_info->>\'plugin\' = \'{1}\''.format(s_filter, plugin.title())
+
+	l_trace = trace_action.get_action_list(d_search_options)
+
+	if not l_trace:
+		return jsonp(request, val_ret)
+
+	for trace in l_trace:
+		flag_stop = False
+		try:
+			if trace[0] and trace[1]:
+				pass
+			else:
+				flag_stop = True
+		except IndexError:
+			flag_stop = True
+
+		if flag_stop == False:
+			uid = trace[0]
+			row = trace[1]
+			dataTableColumns = row.keys()
+			recordsTotal += 1
+
+			action = '<div class="btn-group btn-group-xs">\
+						<input class="uid" type="hidden" value="'+ str(uid) +'" />\
+						<button type="button" name="btn_view" data-container="body" data-toggle="tooltip" data-placement="right" title="'+_('View')+'" class="btn btn-default btn_view"><i class="fa fa-eye"></i></button>\
+					</div>'
+
+			for column in dataTableColumns:
+					if column in type_list['user_trace_action_freeradius']['columns'].keys():
+						if column == 'date':
+							res[type_list['user_trace_action_freeradius']['columns'][column]] = datetime.datetime.fromtimestamp(float(row[column])).strftime('%m/%d/%Y %H:%M:%S')
+						else:
+							res[type_list['user_trace_action_freeradius']['columns'][column]] = row[column]
+
+			res['action'] = action
+			val_ret['data'].append(res.copy())
+			res = {}
+
+	val_ret['recordsTotal'] = recordsTotal
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_getlistinfo_freeradius/<data>/<cat>/<radiusname:re:.*>')
+@inman.get('/im_getlistinfo_freeradius/<data>/<cat>/<radiusname:re:.*>')
+def A_getListInfo_freeradius(data, cat, radiusname=None):
 	
+	if radiusname == '':
+		radiusname = None
+
 	l_label = []
 	response.content_type = 'application/json'
 	val_ret = {'draw': 10, 'recordsTotal': 0, 'recordsFiltered': 10, 'data': []}
@@ -701,62 +1346,89 @@ def A_getListInfo_freeradius(data, cat, radiusname='all'):
 	type_list['client_freeradius-client']['columns'] = {'radiusname': 'radius', 'vendorname': 'vendeur', 'ip': 'ip', 'client': 'client'}
 
 	type_list['users_freeradius-user'] = {}
-	type_list['users_freeradius-user']['fields'] = 'id, json_build_object(\'radiusname\', user_info->\'radiusname\', \'username\', user_info->\'username\', \'right\', user_info->\'right\', \'isldap\', user_info->\'isldap\')'
-	type_list['users_freeradius-user']['columns'] = {'radiusname': 'radius', 'username': 'utilisateur', 'right': 'droit', 'isldap': 'connexion'}
+	type_list['users_freeradius-user']['fields'] = 'id, json_build_object(\'radiusname\', user_info->\'radiusname\', \'username\', user_info->\'username\', \'right\', user_info->\'right\', \'isldap\', user_info->\'isldap\', \'expiration_status\', user_info->\'expiration_status\')'
+	type_list['users_freeradius-user']['columns'] = {'radiusname': 'radius', 'username': 'utilisateur', 'right': 'droit', 'isldap': 'connexion', 'expiration_status': 'statut'}
 
 	type_list['range_freeradius-range'] = {}
 	type_list['range_freeradius-range']['fields'] = 'id, json_build_object(\'radiusname\', range_info->\'radiusname\', \'rangename\', range_info->\'rangename\', \'subnet\', range_info->\'subnet\')'
 	type_list['range_freeradius-range']['columns'] = {'radiusname': 'radius', 'rangename': 'nom', 'subnet': 'sous-reseau'}
+
+	type_list['shared_secret_freeradius-shared_secret'] = {}
+	type_list['shared_secret_freeradius-shared_secret']['fields'] = 'id, json_build_object(\'radiusname\', shared_secret_info->\'radiusname\', \'name\', shared_secret_info->\'name\', \'key\', shared_secret_info->\'key\')'
+	type_list['shared_secret_freeradius-shared_secret']['columns'] = {'radiusname': 'radius', 'name': 'nom', 'key': 'clef'}
+
+	type_list['network_perimeter_freeradius-network_perimeter'] = {}
+	type_list['network_perimeter_freeradius-network_perimeter']['fields'] = 'id, json_build_object(\'radiusname\', network_perimeter_info->\'radiusname\', \'perimeter\', network_perimeter_info->\'label\', \'type\', network_perimeter_info->\'perimeter_type\', \'first_ip\', network_perimeter_info->\'first_ip\', \'last_ip\', network_perimeter_info->\'last_ip\', \'ip_list\', network_perimeter_info->\'ip_list\')'
+	type_list['network_perimeter_freeradius-network_perimeter']['columns'] = {'radiusname': 'radius', 'perimeter': 'perimetre', 'type': 'type', 'ip': 'ip'}
 
 	##Fonction qui liste les host info authorise en fonction du user et donc font la liste des OR pour le AND
 
 	l_info = getList_freeradius(data, plugin='freeradius', filter=radiusname, fields=type_list[data+'-'+cat]['fields'])
 
 	for info in l_info:
-		recordsTotal += 1
-		uid = info[0]
-		row = info[1]
-		dataTableColumns = row.keys()
-		action = '<div class="btn-group btn-group-xs">\
-					<input class="uid" type="hidden" value="'+ str(uid) +'" />\
-					<button type="button" name="btn_delete" data-container="body" data-toggle="tooltip" data-placement="left" title="'+_('Delete '+cat)+'" class="btn btn-default btn_delete_'+cat+'"><i class="fa fa-trash-o"></i></button>\
-					<button type="button" name="btn_edit" data-container="body" data-toggle="tooltip" data-placement="right" title="'+_('Edit '+cat)+'" class="btn btn-default btn_edit_'+cat+'"><i class="fa fa-edit"></i></button>\
-				</div>'
+		flag_stop = False
+		try:
+			if info[0] and info[1]:
+				pass
+			else:
+				flag_stop = True
+		except IndexError:
+			flag_stop = True
 
-		if cat == 'vendor' or cat == 'client' or cat == 'range':
-			for column in dataTableColumns:
-				res[type_list[data+'-'+cat]['columns'][column]] = row[column]
+		if flag_stop == False:
+			uid = info[0]
+			row = info[1]
+			dataTableColumns = row.keys()
+			recordsTotal += 1
+			action = '<div class="btn-group btn-group-xs">\
+						<input class="uid" type="hidden" value="'+ str(uid) +'" />\
+						<button type="button" name="btn_delete" data-container="body" data-toggle="tooltip" data-placement="left" title="'+_('Delete '+cat)+'" class="btn btn-default btn_delete_'+cat+'"><i class="fa fa-trash-o"></i></button>\
+						<button type="button" name="btn_edit" data-container="body" data-toggle="tooltip" data-placement="right" title="'+_('Edit '+cat)+'" class="btn btn-default btn_edit_'+cat+'"><i class="fa fa-edit"></i></button>\
+					</div>'
 
-		elif cat == 'user':
-			for column in dataTableColumns:
-				if column == 'isldap':
-					if row[column] == 'true':
-						res[type_list[data+'-'+cat]['columns'][column]] = 'LDAP'
+			if cat == 'vendor' or cat == 'client' or cat == 'range' or cat == 'shared_secret':
+				for column in dataTableColumns:
+					res[type_list[data+'-'+cat]['columns'][column]] = row[column]
+
+			elif cat == 'network_perimeter':
+				for column in dataTableColumns:
+					if (column == 'last_ip' or column == 'first_ip') and row[column] != None:
+						res[type_list[data+'-'+cat]['columns']['ip']] = row['first_ip'] +' - '+ row['last_ip']
+					elif column == 'ip_list' and row[column] != None:
+						res[type_list[data+'-'+cat]['columns']['ip']] = row[column][0]+' - ...'
+					elif column != 'first_ip' and column != 'last_ip' and column != 'ip_list':
+						res[type_list[data+'-'+cat]['columns'][column]] = row[column]
+
+			elif cat == 'user':
+				for column in dataTableColumns:
+					if column == 'isldap':
+						if row[column] == 'true':
+							res[type_list[data+'-'+cat]['columns'][column]] = 'LDAP'
+						else:
+							res[type_list[data+'-'+cat]['columns'][column]] = 'Local'
 					else:
-						res[type_list[data+'-'+cat]['columns'][column]] = 'Local'
-				else:
-					res[type_list[data+'-'+cat]['columns'][column]] = row[column]
+						res[type_list[data+'-'+cat]['columns'][column]] = row[column]
 
-		elif cat == 'right':
-			for column in dataTableColumns:
-				if column != 'label':
-					res[type_list[data+'-'+cat]['columns'][column]] = row[column]
-				elif column == 'label':
-					recordsTotal -= 1
-					for flag_level in row[column]:
-						if flag_level['label'] != 'list_flag':
-							recordsTotal += 1
-							l_label.append(flag_level['label'])
+			elif cat == 'right':
+				for column in dataTableColumns:
+					if column != 'label':
+						res[type_list[data+'-'+cat]['columns'][column]] = row[column]
+					elif column == 'label':
+						recordsTotal -= 1
+						for flag_level in row[column]:
+							if flag_level['label'] != 'list_flag':
+								recordsTotal += 1
+								l_label.append(flag_level['label'])
 
-		res['action'] = action
-		if l_label != [] and cat == 'right':
-			for label in l_label:
-				res['label'] = label
+			res['action'] = action
+			if l_label != [] and cat == 'right':
+				for label in l_label:
+					res['label'] = label
+					val_ret['data'].append(res.copy())
+			elif cat == 'vendor' or cat == 'client' or cat == 'user' or cat == 'range' or cat == 'network_perimeter' or cat == 'shared_secret':
 				val_ret['data'].append(res.copy())
-		elif cat == 'vendor' or cat == 'client' or cat == 'user' or cat == 'range':
-			val_ret['data'].append(res.copy())
-		res = {}
-		l_label = []
+			res = {}
+			l_label = []
 
 	val_ret['recordsTotal'] = recordsTotal
  
@@ -819,12 +1491,13 @@ def A_getListFlagVendor_freeradius():
 
 	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
 
+	radiusname = request.query.get('radiusname')
 	vendorname = request.query.get('vendorname')
 
 	l_result = getVendorFlagList_freeradius(plugin='freeradius')
 	for result in l_result:
 		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
-		if result['vendorname'] == vendorname:
+		if result['vendorname'] == vendorname and result['radiusname'] == radiusname:
 			for flag in result['l_flag']:
 				flag = flag.keys()[0]
 				val_ret['data'] += '<div class="input-group"> \
@@ -837,17 +1510,163 @@ def A_getListFlagVendor_freeradius():
 	return jsonp(request, val_ret)
 
 
-@inman.post('/im_list_right_autocomplete_freeradius')
-@inman.get('/im_list_right_autocomplete_freeradius')
-def A_getListRight_4autocomplete_freeradius():
+@inman.post('/im_list_right_autocomplete_freeradius/<radiusname>')
+@inman.get('/im_list_right_autocomplete_freeradius/<radiusname>')
+def A_getListRight_4autocomplete_freeradius(radiusname):
 	ret = []
 
 	l_result = getRightList_freeradius(plugin='freeradius')
 
 	for result in l_result:
-		ret.append(result['right'])
+		if result['radiusname'] == radiusname or radiusname == 'all':
+			ret.append(result['right'])
 
 	return json.dumps(ret)
+
+def split_text_ip(text_tosearch):
+	ret = {'label': "", 'IP': 0, 'ip_length': 1}
+	length = len(text_tosearch)
+	t_mul = (1000000000, 1000000, 1000, 1)
+	i = 0
+	p = 0
+	tmp_int_ip = ''
+
+	while i < length :
+		if text_tosearch[i].isdigit():
+			while i < length :
+				if text_tosearch[i] == ' ':
+					ret['IP'] += int(tmp_int_ip) * t_mul[p]
+					break
+				elif text_tosearch[i] == '.' :
+					ret['ip_length'] += 1
+					ret['IP'] += int(tmp_int_ip) * t_mul[p]
+					tmp_int_ip = ''
+					p += 1
+				elif text_tosearch[i] != '.' :
+					tmp_int_ip += str(text_tosearch[i])
+
+				i += 1
+
+			if tmp_int_ip != '':
+				ret['IP'] += int(tmp_int_ip) * t_mul[p]
+			elif tmp_int_ip == '':
+				ret['ip_length'] -= 1
+
+		elif text_tosearch[i].isalpha():
+			while i < length :
+				if text_tosearch[i] == ' ':
+					ret['label'] += ' '
+					break
+				ret['label'] += str(text_tosearch[i])
+				i += 1
+		i += 1
+
+	return ret
+
+def ip_in_perimeter(d_tocompare, network_perimeter_info) :
+	
+	ip_tocompare_int = d_tocompare['IP']
+	i = 0
+	ip_int = 0
+	first_ip_int = 0
+	last_ip_int = 0
+	ip_list_int = []
+	limit_transfo_ip = d_tocompare['ip_length']
+	t_mul = (1000000000, 1000000, 1000, 1)
+
+	if network_perimeter_info['type'] == 'subnet':
+		l_first_ip = network_perimeter_info['first_ip'].split('.')
+		l_last_ip = network_perimeter_info['last_ip'].split('.')
+
+		while i < limit_transfo_ip:
+			first_ip_int += int(l_first_ip[i]) * t_mul[i]
+			last_ip_int += int(l_last_ip[i]) * t_mul[i]
+			i += 1
+
+	else:
+		for ip in network_perimeter_info['ip_list']:
+			l_ip = ip.split('.')
+			while i < limit_transfo_ip:
+				ip_int += int(l_ip[i]) * t_mul[i]
+				i += 1
+
+			ip_list_int.append(ip_int)
+			i = 0
+			ip_int = 0
+
+	if ip_tocompare_int in ip_list_int:
+		return True
+	elif first_ip_int <= ip_tocompare_int and ip_tocompare_int <= last_ip_int :
+		return True
+	else :
+		return False
+
+@inman.post('/im_get_network_perimeter_list_freeradius')
+@inman.get('/im_get_network_perimeter_list_freeradius')
+def A_getNetworkPerimeter_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	radiusname = request.query.get('radiusname')
+	res = []
+	ret = {}
+
+	fields = 'json_build_object(\'perimeter\', network_perimeter_info->\'label\', \'first_ip\', network_perimeter_info->\'first_ip\', \'last_ip\', network_perimeter_info->\'last_ip\', \'ip_list\', network_perimeter_info->\'ip_list\')'
+
+	try:
+		l_result = getList_freeradius('network_perimeter_freeradius', plugin='freeradius', filter='{0}_info->>\'radiusname\' = \'{1}\''.format('network_perimeter', radiusname), fields=fields)
+
+		response.status = '202 '+_('Get Network Perimeter label list')
+		val_ret["results"] = l_result
+		return jsonp(request, val_ret)
+
+	except Exception, e:
+		print e
+		response.status = '444 '+_('Failed to get Network Perimeter label list')
+		res.append(_('Failed')+' - '+ e)
+		val_ret["results"] = res
+		return jsonp(request, val_ret)
+
+
+@inman.post('/im_list_network_perimeter_freeradius')
+@inman.get('/im_list_network_perimeter_freeradius')
+def A_getListNetworkPerimeter_freeradius():
+	fields = 'id, json_build_object(\'radiusname\', network_perimeter_info->\'radiusname\', \'perimeter\', network_perimeter_info->\'label\', \'type\', network_perimeter_info->\'perimeter_type\', \'first_ip\', network_perimeter_info->\'first_ip\', \'last_ip\', network_perimeter_info->\'last_ip\', \'ip_list\', network_perimeter_info->\'ip_list\')'
+	l_res_uid = []
+	l_tosearch = {}
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	radiusname = request.query.get('radiusname')
+	res = []
+	ret = {}
+	oldID = None
+
+	text_tosearch = request.query.get('q')
+
+	l_tosearch = split_text_ip(text_tosearch)
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getList_freeradius('network_perimeter_freeradius', plugin='freeradius', filter='{0}_info->>\'radiusname\' = \'{1}\''.format('network_perimeter', radiusname), fields=fields)
+
+	for result in l_result:
+
+		if result[0] not in l_res_uid and re.search(l_tosearch['label'], result[1]['perimeter'], re.IGNORECASE) is not None and oldID != result[1]['perimeter'] and l_tosearch['label'] != '':
+			l_res_uid.append(result[0])
+			if result[1]['type'] == 'ip_list':
+				res.append({'id': result[0], 'text': '{0} - {1}, ...'.format(result[1]['perimeter'], result[1]['ip_list'][0])})
+			else:
+				res.append({'id': result[0], 'text': '{0} - {1}/{2}'.format(result[1]['perimeter'], result[1]['first_ip'], result[1]['last_ip'])})
+
+		if result[0] not in l_res_uid and l_tosearch['IP'] != 0 and ip_in_perimeter(l_tosearch, result[1]):
+			l_res_uid.append(result[0])
+			if result[1]['type'] == 'ip_list':
+				res.append({'id': result[0], 'text': '{0} - {1}, ...'.format(result[1]['perimeter'], result[1]['ip_list'][0])})
+			else:
+				res.append({'id': result[0], 'text': '{0} - {1}/{2}'.format(result[1]['perimeter'], result[1]['first_ip'], result[1]['last_ip'])})
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
 
 @inman.post('/im_list_right_freeradius')
 @inman.get('/im_list_right_freeradius')
@@ -857,14 +1676,16 @@ def A_getListRight_freeradius():
 	res = []
 	ret = {}
 	oldID = None
+	filter_with_radiusname = request.query.get('radiusname')
 
 	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
 
 	l_result = getRightList_freeradius(plugin='freeradius')
 	for result in l_result:
+		if result['radiusname'] == filter_with_radiusname or filter_with_radiusname == 'all':
 		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
-		if re.search(request.query.get('q'), result['right'], re.IGNORECASE) is not None and oldID != result['right']:
-			res.append({'id': result['right'], 'text': result['right']})
+			if re.search(request.query.get('q'), result['right'], re.IGNORECASE) is not None and oldID != result['right']:
+				res.append({'id': result['right'], 'text': result['right']})
 
 	val_ret["results"] = res
 
@@ -878,14 +1699,63 @@ def A_getListVendor_freeradius():
 	res = []
 	ret = {}
 	oldID = None
+	filter_with_radiusname = request.query.get('radiusname')
 
 	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
 
 	l_result = getVendorList_freeradius(plugin='freeradius')
 	for result in l_result:
+		if result['radiusname'] == filter_with_radiusname or filter_with_radiusname == 'all':
 		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
-		if re.search(request.query.get('q'), result['vendorname'], re.IGNORECASE) is not None and oldID != result['vendorname']:
-			res.append({'id': result['vendorname'], 'text': result['vendorname']})
+			if re.search(request.query.get('q'), result['vendorname'], re.IGNORECASE) is not None and oldID != result['vendorname']:
+				res.append({'id': result['vendorname'], 'text': result['vendorname']})
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_shared_secret_freeradius')
+@inman.get('/im_list_shared_secret_freeradius')
+def A_getListSharedsecret_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+	filter_with_radiusname = request.query.get('radiusname')
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getSharedsecretList_freeradius(plugin='freeradius')
+
+	for result in l_result:
+		if result['radiusname'] == filter_with_radiusname or filter_with_radiusname == 'all':
+		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
+			if re.search(request.query.get('q'), result['name'], re.IGNORECASE) is not None and oldID != result['name']:
+				res.append({'id': result['id'], 'text': result['name']})
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
+@inman.post('/im_list_user_freeradius')
+@inman.get('/im_list_user_freeradius')
+def A_getListUser_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+	filter_with_radiusname = request.query.get('radiusname')
+
+	##Fonction qui liste les agent_alias authorise en fonction du user et donc font la liste des OR pour le AND
+
+	l_result = getUserList_freeradius(plugin='freeradius')
+	for result in l_result:
+		if result['radiusname'] == filter_with_radiusname or filter_with_radiusname == 'all':
+		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
+			if re.search(request.query.get('q'), result['username'], re.IGNORECASE) is not None and oldID != result['username']:
+				res.append({'id': result['username'], 'text': result['username']})
 
 	val_ret["results"] = res
 
@@ -910,6 +1780,27 @@ def A_getListAgent_freeradius():
 
 	return jsonp(request, val_ret)
 
+@inman.post('/im_list_client_freeradius')
+@inman.get('/im_list_client_freeradius')
+def A_getListClient_freeradius():
+	response.content_type = 'application/json'
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = {}
+	oldID = None
+	filter_with_radiusname = request.query.get('radiusname')
+
+	l_result = getClientList_freeradius(plugin='freeradius')
+	for result in l_result:
+		if result['radiusname'] == filter_with_radiusname or filter_with_radiusname == 'all':
+		# Rajout dans le IF du fait que le superviseur soit dans liste de droit du user ou pas
+			if re.search(request.query.get('q'), result['ip'], re.IGNORECASE) is not None and oldID != result['ip']:
+				res.append({'id': result['ip'], 'text': result['ip']})
+
+	val_ret["results"] = res
+
+	return jsonp(request, val_ret)
+
 
 @inman.get('/im_crud_user_freeradius/<action>')
 def A_crud_user_freeradius(action):
@@ -929,10 +1820,24 @@ def A_crud_user_freeradius(action):
 	isldap = request.query.get('isldap')
 	password = request.query.get('password')
 	right = request.query.get('right')
+	expiration_date = request.query.get('expiration_date')
+	expiration_status = request.query.get('expiration_status')
+	perimeter_list = request.query.get('perimeter_list')
+	session = inman.request.environ.get('beaker.session')
+
+
+	if perimeter_list :
+		perimeter_list = json.loads(perimeter_list)
+		if len(perimeter_list) >= 1:
+			to_insert['network_perimeter'] = perimeter_list
 
 	if username:
 		to_insert['username'] = username.lower()
+	if expiration_date:
+		to_insert['expiration_timestamp'] = time.mktime(datetime.datetime.strptime(expiration_date, '%d/%m/%Y').timetuple())
 	to_insert['password'] = password
+	to_insert['expiration_date'] = expiration_date
+	to_insert['expiration_status'] = expiration_status
 	to_insert['isldap'] = isldap
 	to_insert['radiusname'] = radiusname
 	to_insert['right'] = right
@@ -955,12 +1860,14 @@ def A_crud_user_freeradius(action):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} user'.format(action), doc['user_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_user_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} user'.format(action), doc['user_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 @inman.get('/im_crud_client_freeradius/<action>')
@@ -982,6 +1889,7 @@ def A_crud_client_freeradius(action):
 	shortname = request.query.get('shortname')
 	ip = request.query.get('ip')
 	sharedsecret = request.query.get('sharedsecret')
+	session = inman.request.environ.get('beaker.session')
 
 	to_insert['name'] = name
 	to_insert['ip'] = ip
@@ -1008,12 +1916,66 @@ def A_crud_client_freeradius(action):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} client'.format(action), doc['client_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_client_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} client'.format(action), doc['client_info'], agent=radiusname)
+		return jsonp(request, val_ret)
+
+@inman.get('/im_crud_shared_secret_freeradius/<action>')
+def A_crud_shared_secret_freeradius(action):
+	
+	d_block = {}
+	doc = {}
+	d_flag_level = {}
+	d_search_options = {}
+	response.content_type = 'application/json'
+	to_insert = {}
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = ''
+
+	radiusname = request.query.get('radiusname')
+	name = request.query.get('name')
+	key = request.query.get('key')
+	comment = request.query.get('comment')
+	session = inman.request.environ.get('beaker.session')
+
+	to_insert['radiusname'] = radiusname
+	to_insert['name'] = name
+	to_insert['key'] = key
+	to_insert['comment'] = comment
+	to_insert = json.dumps(to_insert).replace('\'', '\'\'')
+
+	doc['shared_secret_info'] = to_insert
+
+	try:
+		if action == 'new':
+			ret = IMDB_psg.publish(collection='shared_secret_freeradius', doc=doc)
+		elif action == 'edit' :
+			uid = request.query.get('uid')
+			d_search_options['filter'] = 'id = \''+ str(uid) +'\''
+			ret = IMDB_psg.update(collection='shared_secret_freeradius', doc=doc, search_parameter=d_search_options)
+		elif action == 'delete':
+			uid = request.query.get('uid')
+			d_search_options['filter'] = 'id = \''+ str(uid) +'\''
+			ret = IMDB_psg.delete(collection='shared_secret_freeradius', id=uid, search_parameter=d_search_options)
+
+		response.status = '202 '+_('Save in database')
+		res.append(_('Save in database'))
+		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} shared secret'.format(action), doc['shared_secret_info'], agent=radiusname)
+		return jsonp(request, val_ret)
+	except Exception, e:
+		logger.error('In function : {0}\n {1}'.format('A_crud_shared_secret_freeradius', e))
+		response.status = '444 '+_('Connection Failed')
+		res.append(_('Save failure')+' - '+_('Connection Failed'))
+		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} shared secret'.format(action), doc['shared_secret_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 @inman.get('/im_crud_range_freeradius/<action>')
@@ -1033,6 +1995,7 @@ def A_crud_range_freeradius(action):
 	rangename = request.query.get('rangename')
 	subnet = request.query.get('subnet')
 	sharedsecret = request.query.get('sharedsecret')
+	session = inman.request.environ.get('beaker.session')
 
 	to_insert['radiusname'] = radiusname
 	to_insert['rangename'] = rangename
@@ -1057,12 +2020,85 @@ def A_crud_range_freeradius(action):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} range'.format(action), doc['range_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_range_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} range'.format(action), doc['range_info'], agent=radiusname)
+		return jsonp(request, val_ret)
+
+@inman.get('/im_crud_network_perimeter_freeradius/<action>')
+def A_crud_network_perimeter_freeradius(action):
+	
+	d_block = {}
+	doc = {}
+	d_flag_level = {}
+	d_search_options = {}
+	response.content_type = 'application/json'
+	to_insert = {}
+	val_ret = {"more": False, "results":[]}
+	res = []
+	ret = ''
+
+	label = request.query.get('label')
+	radiusname = request.query.get('radiusname')
+	session = inman.request.environ.get('beaker.session')
+
+	try:
+		if action == 'delete':
+			uid = request.query.get('uid')
+			d_search_options['filter'] = 'id = \''+ str(uid) +'\''
+			ret = IMDB_psg.delete(collection='network_perimeter_freeradius', id=uid, search_parameter=d_search_options)
+
+			response.status = '202 '+_('Delete in database')
+			res.append(_('Delete in database'))
+			val_ret["results"] = res
+			trace_action.insert_action(session['login'], 'Freeradius', '{0} network perimeter'.format(action), label, agent=radiusname)
+			return jsonp(request, val_ret)
+	except Exception, e:
+		logger.error('In function : {0}\n {1}'.format('A_crud_network_perimeter_freeradius', e))
+		response.status = '444 '+_('Connection Failed')
+		res.append(_('Save failure')+' - '+_('Connection Failed'))
+		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} network perimeter'.format(action), label, agent=radiusname)
+		return jsonp(request, val_ret)
+
+	to_insert['radiusname'] = radiusname
+	to_insert['label'] = label
+	to_insert['perimeter_type'] = perimeter_type = request.query.get('perimeter_type')
+	if perimeter_type == 'subnet':
+		to_insert['first_ip'] = first_ip = request.query.get('first_ip')
+		to_insert['last_ip'] = last_ip = request.query.get('last_ip')
+	else:
+		to_insert['ip_list'] = ip_list = json.loads(request.query.get('ip_list'))
+
+
+	to_insert = json.dumps(to_insert).replace('\'', '\'\'')
+
+	doc['network_perimeter_info'] = to_insert
+
+	try:
+		if action == 'new':
+			ret = IMDB_psg.publish(collection='network_perimeter_freeradius', doc=doc)
+		elif action == 'edit' :
+			uid = request.query.get('uid')
+			d_search_options['filter'] = 'id = \''+ str(uid) +'\''
+			ret = IMDB_psg.update(collection='network_perimeter_freeradius', doc=doc, search_parameter=d_search_options)
+
+		response.status = '202 '+_('Save in database')
+		res.append(_('Save in database'))
+		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} network perimeter'.format(action), doc['network_perimeter_info'], agent=radiusname)
+		return jsonp(request, val_ret)
+	except Exception, e:
+		logger.error('In function : {0}\n {1}'.format('A_crud_network_perimeter_freeradius', e))
+		response.status = '444 '+_('Connection Failed')
+		res.append(_('Save failure')+' - '+_('Connection Failed'))
+		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} network perimeter'.format(action), doc['network_perimeter_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 
@@ -1085,6 +2121,7 @@ def A_crud_right_freeradius(action):
 	radiusname = request.query.get('radiusname')
 	vendorname = request.query.get('vendorname')
 	label = request.query.get('label')
+	session = inman.request.environ.get('beaker.session')
 
 	d_flag_level['label'] = label
 	d_flag_level['l_flag'] = []
@@ -1143,12 +2180,14 @@ def A_crud_right_freeradius(action):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} right'.format(action), doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_right_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} right'.format(action), doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 @inman.post('/im_crud_vendor_freeradius/<action>')
@@ -1168,6 +2207,7 @@ def A_crud_vendor_freeradius(action):
 	d_flag = json.loads(request.query.get('l_flag'))
 	radiusname = request.query.get('radiusname')
 	vendorname = request.query.get('vendorname')
+	session = inman.request.environ.get('beaker.session')
 
 	to_insert['radiusname'] = radiusname
 	to_insert['vendorname'] = vendorname
@@ -1200,12 +2240,14 @@ def A_crud_vendor_freeradius(action):
 		response.status = '202 '+_('Save in database')
 		res.append(_('Save in database'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '{0} vendor'.format(action), doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_vendor_freeradius', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Freeradius', '*FAILED* {0} vendor'.format(action), doc['vendor_info'], agent=radiusname)
 		return jsonp(request, val_ret)
 
 @inman.post('/im_client_freeradius')
@@ -1221,6 +2263,22 @@ def W_client_freeradius():
 
 	response.content_type = 'text/html'
 	OTemplate = env.get_template('im_client_freeradius.tpl')
+
+	return OTemplate.render(d_render)
+
+@inman.post('/im_shared_secret_freeradius')
+@inman.get('/im_shared_secret_freeradius')
+def W_shared_secret_freeradius():
+	global env
+
+	verif_session()
+
+	plugin_list = getUserSessionPluginList()
+
+	d_render = {'page_title': 'InMan - Configuration management tool', 'plugin_list': plugin_list}
+
+	response.content_type = 'text/html'
+	OTemplate = env.get_template('im_shared_secret_freeradius.tpl')
 
 	return OTemplate.render(d_render)
 
@@ -1269,6 +2327,38 @@ def W_user_freeradius():
 
 	response.content_type = 'text/html'
 	OTemplate = env.get_template('im_user_freeradius.tpl')
+
+	return OTemplate.render(d_render)
+
+@inman.post('/im_network_perimeter_freeradius')
+@inman.get('/im_network_perimeter_freeradius')
+def W_network_perimeter_freeradius():
+	global env
+
+	verif_session()
+
+	plugin_list = getUserSessionPluginList()
+
+	d_render = {'page_title': 'InMan - Configuration management tool', 'plugin_list': plugin_list}
+
+	response.content_type = 'text/html'
+	OTemplate = env.get_template('im_network_perimeter_freeradius.tpl')
+
+	return OTemplate.render(d_render)
+
+@inman.post('/im_user_trace_action_freeradius')
+@inman.get('/im_user_trace_action_freeradius')
+def W_network_perimeter_freeradius():
+	global env
+
+	verif_session()
+
+	plugin_list = getUserSessionPluginList()
+
+	d_render = {'page_title': 'InMan - Configuration management tool', 'plugin_list': plugin_list}
+
+	response.content_type = 'text/html'
+	OTemplate = env.get_template('im_user_trace_action_freeradius.tpl')
 
 	return OTemplate.render(d_render)
 
@@ -1415,6 +2505,12 @@ def searchDocInfo_freeradius(db_collection_name, d_search_options):
 
 	l_results = IMDB_psg.search(collection=db_collection_name, search_parameter=d_search_options)
 
+	try:
+		if l_results[0]:
+			pass
+	except IndexError:
+		return None
+
 	return l_results[0]
 
 @inman.post('/launchsync_freeradius')
@@ -1436,6 +2532,13 @@ def A_launchSync_freeradius():
 	d_search_options['filter'] = 'agent_info->>\'agent_name\' = \'{0}\' AND agent_info->>\'plugin\' = \'{1}\''.format(radiusname, plugin)
 
 	agent_doc = searchDocInfo_freeradius(db_collection_name='agent', d_search_options=d_search_options)
+
+	if not agent_doc:
+		response.status = '444 '+_('Connection Failed')
+		res.append(_('Synchronization failure')+' - '+_('Connection Failed'))
+		val_ret["results"] = res
+		return jsonp(request, val_ret)
+
 	d_agent_info = agent_doc[1]
 
 	try:
@@ -1447,6 +2550,11 @@ def A_launchSync_freeradius():
 			time.sleep(1)
 			if countdown == 0:
 				print 'Agent {0} not available'.format(radiusname)
+				response.status = '444 '+_('Synchronization failure')+' - '+_('Connection Failed')+' - '+_('Agent {0} not available').format(radiusname)
+				res.append(_('Synchronization failure')+' - '+_('Connection Failed'))
+				val_ret["results"] = res
+				agent.close()
+				return jsonp(request, val_ret)
 				break
 			else:
 				countdown -= 1
@@ -1476,7 +2584,34 @@ def getCollection_freeradius(db_collection, agent_name, json_field, json_key):
 		logger.debug('Get data from collection "{}" : request field "{}_info" with filter "{}"'.format(db_collection, json_field, agent_name))
 	
 		d_search_options['filter'] = '{0}_info->>\'{1}\' = \'{2}\''.format(json_field, json_key, agent_name)
-		d_search_options['fields'] = '{0}_info'.format(json_field)
+		d_search_options['fields'] = '{0}_info, id'.format(json_field)
+
+		ret = IMDB_psg.search(collection=db_collection, search_parameter=d_search_options)
+
+		logger.debug('Data retrieve from collection "{}" : {}'.format(db_collection, ret))	
+
+		return ret
+	except Exception, e:
+		logger.debug('Failed to retrieve data from collection "{}" : {}'.format(db_collection, e))
+		return None
+
+def getClientSharedsecret_freeradius(agent_name):
+	d_search_options = {}
+
+## SELECT sf.shared_secret_info->>'name' AS name, cf.client_info->>'ip' AS ip, sf.shared_secret_info->>'key' AS sharedsecret
+## FROM client_freeradius cf, shared_secret_freeradius sf
+## WHERE cf.client_info->>'sharedsecret' <> NULL OR cf.client_info->>'sharedsecret' <> '' 
+## AND CAST(cf.client_info->>'sharedsecret' AS integer) = sf.id
+
+	try :
+
+		db_collection = 'client_freeradius cf, shared_secret_freeradius sf'
+
+		logger.debug('Get Client Sharedsecret from collection "{}" on agent "{}"'.format(db_collection, agent_name))
+
+		d_search_options['filter'] = 'cf.client_info->>\'sharedsecret\' <> NULL OR cf.client_info->>\'sharedsecret\' <> \'\' AND CAST(cf.client_info->>\'sharedsecret\' AS integer) = sf.id AND cf.client_info->>\'radiusname\' = \'{0}\''.format(agent_name)
+
+		d_search_options['fields'] = 'json_build_object(\'name\', sf.shared_secret_info->>\'name\', \'ip\', cf.client_info->>\'ip\', \'sharedsecret\', sf.shared_secret_info->>\'key\')'.format()
 
 		ret = IMDB_psg.search(collection=db_collection, search_parameter=d_search_options)
 
@@ -1497,6 +2632,11 @@ def A_SyncConf_freeradius():
 
 	d_sync_info = request.json
 
+#	print d_sync_info
+
+	if d_sync_info == None:
+		return jsonp(request, d_dataCollection)
+
 	agent_name = d_sync_info['agent_name']
 	l_db_collection = d_sync_info['collection2Sync']
 
@@ -1509,7 +2649,17 @@ def A_SyncConf_freeradius():
 
 		logger.debug('Collection to get "{}" : Spec field to get "{}" ; Spec field to link "{}"'.format(collection, json_field, json_key))
 
-		data = getCollection_freeradius(collection, agent_name, json_field, json_key)
+#		print d_db_collection
+
+##~~
+# With the futur MATVIEW sync system this IF statement will disapear and the getCollection
+# will take data inside matview and not anymore directly inside db collection
+##~~
+
+		if collection == 'shared_secret_freeradius' :
+			data = getClientSharedsecret_freeradius(agent_name)
+		else:
+			data = getCollection_freeradius(collection, agent_name, json_field, json_key)
 
 		logger.debug('Data to sync for collection "{}" : {}'.format(collection, data))
 
@@ -1586,7 +2736,37 @@ def W_status_freeradius():
 
 	return OTemplate.render(d_render)
 
+@inman.post('/im_probe_supervisor')
+@inman.get('/im_probe_supervisor')
+def W_probe_freeradius():
+	global env
 
+	verif_session()
+
+	plugin_list = getUserSessionPluginList()
+
+	d_render = {'page_title': 'InMan - Configuration management tool', 'plugin_list': plugin_list}
+
+	response.content_type = 'text/html'
+	OTemplate = env.get_template('im_probe_supervisor.tpl')
+
+	return OTemplate.render(d_render)
+
+@inman.post('/im_command_supervisor')
+@inman.get('/im_command_supervisor')
+def W_command_freeradius():
+	global env
+
+	verif_session()
+
+	plugin_list = getUserSessionPluginList()
+
+	d_render = {'page_title': 'InMan - Configuration management tool', 'plugin_list': plugin_list}
+
+	response.content_type = 'text/html'
+	OTemplate = env.get_template('im_command_supervisor.tpl')
+
+	return OTemplate.render(d_render)
 
 #################################################
 ### *********************************************
@@ -1675,6 +2855,7 @@ def A_crud_user(action):
 	firstname = request.query.get('firstname')
 	lastname = request.query.get('lastname')
 	rights = request.query.get('rights')
+	session = inman.request.environ.get('beaker.session')
 
 	if action == 'new' or action == 'edit':
 		to_insert['login'] = login.lower()
@@ -1703,10 +2884,11 @@ def A_crud_user(action):
 		val_ret["results"] = res
 		return jsonp(request, val_ret)
 	except Exception, e:
-		print e
+		logger.error('In function : {0}\n {1}'.format('A_crud_user', e))
 		response.status = '444 '+_('Connection Failed')
 		res.append(_('Save failure')+' - '+_('Connection Failed'))
 		val_ret["results"] = res
+		trace_action.insert_action(session['login'], 'Administration', '*FAILED* {0} inman user'.format(action), doc['user_info'])
 		return jsonp(request, val_ret)
 
 def getAgentList(plugin='all', user='all'):

@@ -6,21 +6,23 @@ import json
 import sys
 
 l_user = []
-
 username = json.loads(TD['new']['user_info'])['username']
+radiusname = json.loads(TD['new']['user_info'])['radiusname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
 
 res = plpy.execute("SELECT * FROM matview WHERE name = 'list_user_freeradius'")
-
 if res:
  for row in res:
   l_user = json.loads(row['view_data'])
   uid = row['id']
- if username not in l_user:
-  l_user.append(username)
+ if {'radiusname': radiusname, 'username': username} not in l_user:
+  l_user.append({'radiusname': radiusname, 'username': username})
   l_user = json.dumps(l_user)
   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_user +"') WHERE id = "+ str(uid) +"")
 else:
- l_user.append(username)
+ l_user.append({'radiusname': radiusname, 'username': username})
  l_user = json.dumps(l_user)
  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_user_freeradius', '"+l_user+"')")
 
@@ -30,3 +32,73 @@ CREATE TRIGGER list_user_freeradius
 AFTER INSERT ON users_freeradius
 FOR EACH ROW
 EXECUTE PROCEDURE list_user_freeradius();
+
+
+CREATE OR REPLACE FUNCTION delete_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_user = []
+username = json.loads(TD['old']['user_info'])['username']
+radiusname = json.loads(TD['old']['user_info'])['radiusname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_user_freeradius'")
+if res:
+ for row in res:
+  l_user = json.loads(row['view_data'])
+  uid = row['id']
+ if {'radiusname': radiusname, 'username': username} in l_user:
+  position_in_list = l_user.index({'radiusname': radiusname, 'username': username})
+  del l_user[position_in_list]
+  l_user = json.dumps(l_user)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_user +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER delete_user_freeradius
+AFTER DELETE ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE delete_user_freeradius();
+
+
+CREATE OR REPLACE FUNCTION update_user_freeradius ()
+RETURNS TRIGGER
+AS $$
+
+import json
+import sys
+
+l_user = []
+username = json.loads(TD['new']['user_info'])['username']
+radiusname = json.loads(TD['new']['user_info'])['radiusname']
+
+OLDusername = json.loads(TD['old']['user_info'])['username']
+OLDradiusname = json.loads(TD['old']['user_info'])['radiusname']
+
+#fd = open('/tmp/test_trigger', 'a')
+#fd.write(row['view_data'] + "\n")
+
+res = plpy.execute("SELECT * FROM matview WHERE name = 'list_user_freeradius'")
+if res:
+ for row in res:
+  l_user = json.loads(row['view_data'])
+  uid = row['id']
+ if {'radiusname': OLDradiusname, 'username': OLDusername} in l_user:
+  position_in_list = l_user.index({'radiusname': OLDradiusname, 'username': OLDusername})
+  del l_user[position_in_list]
+  l_user.append({'radiusname': radiusname, 'username': username})
+  l_user = json.dumps(l_user)
+  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_user +"') WHERE id = "+ str(uid) +"")
+
+$$ LANGUAGE plpythonu;
+
+CREATE TRIGGER update_user_freeradius
+AFTER UPDATE ON users_freeradius
+FOR EACH ROW
+EXECUTE PROCEDURE update_user_freeradius();

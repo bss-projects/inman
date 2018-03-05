@@ -7,6 +7,7 @@ import sys
 
 l_vendor = []
 vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['new']['vendor_info'])['radiusname']
 
 #fd = open('/tmp/test_trigger', 'a')
 #fd.write(row['view_data'] + "\n")
@@ -16,12 +17,12 @@ if res:
  for row in res:
   l_vendor = json.loads(row['view_data'])
   uid = row['id']
- if vendorname not in l_vendor:
-  l_vendor.append(vendorname)
+ if {'radiusname': radiusname, 'vendorname': vendorname} not in l_vendor:
+  l_vendor.append({'radiusname': radiusname, 'vendorname': vendorname})
   l_vendor = json.dumps(l_vendor)
   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
 else:
- l_vendor.append(vendorname)
+ l_vendor.append({'radiusname': radiusname, 'vendorname': vendorname})
  l_vendor = json.dumps(l_vendor)
  res = plpy.execute("INSERT INTO matview (name, view_data) VALUES ('list_vendor_freeradius', '"+l_vendor+"')")
 
@@ -42,6 +43,7 @@ import sys
 
 l_vendor = []
 vendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['old']['vendor_info'])['radiusname']
 
 #fd = open('/tmp/test_trigger', 'a')
 #fd.write(row['view_data'] + "\n")
@@ -51,8 +53,9 @@ if res:
  for row in res:
   l_vendor = json.loads(row['view_data'])
   uid = row['id']
- if vendorname in l_vendor:
-  l_vendor.remove(vendorname)
+ if {'radiusname': radiusname, 'vendorname': vendorname} in l_vendor:
+  position_in_list = l_vendor.index({'radiusname': radiusname, 'vendorname': vendorname})
+  del l_vendor[position_in_list]
   l_vendor = json.dumps(l_vendor)
   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
 
@@ -73,20 +76,29 @@ import sys
 
 l_vendor = []
 vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
-OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['new']['vendor_info'])['radiusname']
 
-#fd = open('/tmp/test_trigger', 'a')
-#fd.write(row['view_data'] + "\n")
+OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+OLDradiusname = json.loads(TD['old']['vendor_info'])['radiusname']
+
+fd = open('/tmp/psql/test_trigger_update_vendor', 'a')
+
+fd.write('New vendor info {0}\n'.format(TD['new']['vendor_info']))
+
+fd.write('Old vendor name {0} -- New vendor name {1}\n'.format(OLDvendorname, vendorname))
 
 res = plpy.execute("SELECT * FROM matview WHERE name = 'list_vendor_freeradius'")
 if res:
  for row in res:
   l_vendor = json.loads(row['view_data'])
   uid = row['id']
- if OLDvendorname in l_vendor:
-  l_vendor.remove(OLDvendorname)
-  l_vendor.append(vendorname)
+  fd.write('Actual content in DB : {0}\n'.format(l_vendor))
+ if {'radiusname': OLDradiusname, 'vendorname': OLDvendorname} in l_vendor:
+  position_in_list = l_vendor.index({'radiusname': OLDradiusname, 'vendorname': OLDvendorname})
+  del l_vendor[position_in_list]
+  l_vendor.append({'radiusname': radiusname, 'vendorname': vendorname})
   l_vendor = json.dumps(l_vendor)
+  fd.write('New data in DB : {0}\n'.format(l_vendor))
   res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_vendor +"') WHERE id = "+ str(uid) +"")
 
 $$ LANGUAGE plpythonu;

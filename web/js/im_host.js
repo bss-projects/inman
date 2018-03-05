@@ -1,6 +1,5 @@
 $(function()
 {
-
 	function iconHostFormatResult(icon)
 	{
 		var markup = "<table class='icon-result'><tr>";

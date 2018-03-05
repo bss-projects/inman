@@ -76,6 +76,12 @@
                                     <a href="/im_model_supervisor">{{ _('Model') }}</a>
                                 </li>
                                 <li>
+                                    <a href="/im_command_supervisor">{{ _('Command') }}</a>
+                                </li>
+                                <li>
+                                    <a href="/im_probe_supervisor">{{ _('Probe') }}</a>
+                                </li>
+                                <li>
                                     <a href="/im_status_supervisor">{{ _('Status') }}</a>
                                 </li>
                             </ul>
@@ -94,10 +100,19 @@
                                     <a href="/im_client_freeradius">{{ _('Clients management') }}</a>
                                 </li>
                                 <li>
+                                    <a href="/im_shared_secret_freeradius">{{ _('Shared secret') }}</a>
+                                </li>
+                                <li>
                                     <a href="/im_vendor_freeradius">{{ _('Vendors management') }}</a>
                                 </li>
                                 <li>
                                     <a href="/im_right_freeradius">{{ _('Rights management') }}</a>
+                                </li>
+                                <li>
+                                    <a href="/im_network_perimeter_freeradius">{{ _('Network perimeter') }}</a>
+                                </li>
+                                <li>
+                                    <a href="/im_user_trace_action_freeradius">{{ _('User action') }}</a>
                                 </li>
                                 <li>
                                     <a href="/im_log_freeradius">{{ _('View log') }}</a>

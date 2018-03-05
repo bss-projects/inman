@@ -1,6 +1,5 @@
 $(function()
 {
-
 	$("#templatemodel").select2({
 		minimumInputLength: 1,
 		ajax: {

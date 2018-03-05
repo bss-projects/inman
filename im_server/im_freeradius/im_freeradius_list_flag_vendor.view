@@ -14,12 +14,16 @@ uid = 0
 
 l_block = json.loads(TD['new']['vendor_info'])['l_flag_level'][0]['l_block']
 vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['new']['vendor_info'])['radiusname']
 
-#fd = open('/tmp/test_trigger', 'a')
-#fd.write(row['view_data'] + "\n")
+fd = open('/tmp/psql/test_trigger_insert_vendor_flag', 'a')
+
+fd.write('New vendor with FLAG {0}\n'.format(vendorname))
 
 for block in l_block:
  l_flag += block['list']
+
+fd.write('Vendor FLAG {0}\n'.format(l_flag))
 
 res = plpy.execute("SELECT * FROM matview WHERE name = 'list_flag_vendor_freeradius'")
 
@@ -28,31 +32,30 @@ if res:
   l_flag_vendor = json.loads(row['view_data'])
   uid = row['id']
  
-# fd.write("Previous REC" + "\n")
  i = 0
  for d_flag_vendor in l_flag_vendor:
-  if d_flag_vendor['vendorname'] == vendorname:
+  if d_flag_vendor['vendorname'] == vendorname and d_flag_vendor['radiusname'] == radiusname:
    d_flag_vendor['l_flag'] = l_flag
    l_flag_vendor[i] = d_flag_vendor
    flag_update = True
-#   fd.write("Known vendor" + "\n")
+   fd.write('Vendor {0} previously known\n'.format(vendorname))
    break
   i += 1
 
  if not flag_update :
-#  fd.write("Unknown vendor" + "\n")
-#  fd.write(json.dumps(l_flag_vendor) + "\n")
+  fd.write('Unknown vendor {0}\n'.format(vendorname))
   d_flag_vendor_tmp['vendorname'] = vendorname
+  d_flag_vendor_tmp['radiusname'] = radiusname
   d_flag_vendor_tmp['l_flag'] = l_flag
-#  fd.write(json.dumps(d_flag_vendor_tmp) + "\n")
   l_flag_vendor.append(d_flag_vendor_tmp)
 
  l_flag_vendor = json.dumps(l_flag_vendor)
-# fd.write(l_flag_vendor + "\n")
+ fd.write('Vendor {0} FLAG : {1}\n'.format(vendorname, l_flag_vendor))
  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_flag_vendor +"') WHERE id = "+ str(uid) +"")
 
 else:
  d_flag_vendor['vendorname'] = vendorname
+ d_flag_vendor['radiusname'] = radiusname
  d_flag_vendor['l_flag'] = l_flag
  l_flag_vendor.append(d_flag_vendor)
 
@@ -83,9 +86,11 @@ uid = 0
 
 l_block = json.loads(TD['old']['vendor_info'])['l_flag_level'][0]['l_block']
 vendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['old']['vendor_info'])['radiusname']
 
-#fd = open('/tmp/test_trigger', 'a')
-#fd.write(row['view_data'] + "\n")
+fd = open('/tmp/psql/test_trigger_delete_vendor_flag', 'a')
+
+fd.write('Delete vendor {0} with FLAG in {1}\n'.format(vendorname, radiusname))
 
 for block in l_block:
  l_flag += block['list']
@@ -97,14 +102,13 @@ if res:
   l_flag_vendor = json.loads(row['view_data'])
   uid = row['id']
  
-# fd.write("Previous REC" + "\n")
  for d_flag_vendor in l_flag_vendor:
-  if d_flag_vendor['vendorname'] != vendorname:
+  fd.write('To evaluate {0} : {1}\n'.format(d_flag_vendor['radiusname'], d_flag_vendor['vendorname']))
+  if d_flag_vendor['vendorname'] != vendorname or d_flag_vendor['radiusname'] != radiusname:
    l_flag_vendor_tmp.append(d_flag_vendor.copy())
-#   fd.write("Known vendor" + "\n")
+   fd.write('To copy {0} : {1}\n'.format(d_flag_vendor['radiusname'], d_flag_vendor['vendorname']))
 
  l_flag_vendor = json.dumps(l_flag_vendor_tmp)
-# fd.write(l_flag_vendor + "\n")
  res = plpy.execute("UPDATE matview SET (view_data) = ('"+ l_flag_vendor +"') WHERE id = "+ str(uid) +"")
 
 $$ LANGUAGE plpythonu;
@@ -132,8 +136,11 @@ uid = 0
 
 l_block = json.loads(TD['new']['vendor_info'])['l_flag_level'][0]['l_block']
 vendorname = json.loads(TD['new']['vendor_info'])['vendorname']
+radiusname = json.loads(TD['new']['vendor_info'])['radiusname']
+
 OLDl_block = json.loads(TD['old']['vendor_info'])['l_flag_level'][0]['l_block']
 OLDvendorname = json.loads(TD['old']['vendor_info'])['vendorname']
+OLDradiusname = json.loads(TD['old']['vendor_info'])['radiusname']
 
 #fd = open('/tmp/test_trigger', 'a')
 #fd.write(row['view_data'] + "\n")
@@ -151,23 +158,28 @@ if res:
 # fd.write("Previous REC" + "\n")
  i = 0
  for d_flag_vendor in l_flag_vendor:
-  if d_flag_vendor['vendorname'] == vendorname:
+  if d_flag_vendor['vendorname'] == vendorname and d_flag_vendor['radiusname'] == radiusname:
    d_flag_vendor['l_flag'] = l_flag
    l_flag_vendor[i] = d_flag_vendor
    flag_update = True
 #   fd.write("Known vendor" + "\n")
-   break
+##   break
+  elif d_flag_vendor['vendorname'] == OLDvendorname and d_flag_vendor['radiusname'] == OLDradiusname:
+   d_flag_vendor['vendorname'] = vendorname
+   d_flag_vendor['radiusname'] = radiusname
+   d_flag_vendor['l_flag'] = l_flag
+   l_flag_vendor[i] = d_flag_vendor
   i += 1
 
- if not flag_update :
+## if not flag_update :
 #  fd.write("Unknown vendor" + "\n")
-  for d_flag_vendor in l_flag_vendor:
-   if d_flag_vendor['vendorname'] != OLDvendorname:
-    l_flag_vendor_tmp.append(d_flag_vendor.copy())
-   elif d_flag_vendor['vendorname'] == OLDvendorname:
-    d_flag_vendor_tmp['vendorname'] = vendorname
-    d_flag_vendor_tmp['l_flag'] = l_flag
-    l_flag_vendor_tmp.append(d_flag_vendor_tmp)
+##  for d_flag_vendor in l_flag_vendor:
+##   if d_flag_vendor['vendorname'] != OLDvendorname:
+##    l_flag_vendor_tmp.append(d_flag_vendor.copy())
+##   elif d_flag_vendor['vendorname'] == OLDvendorname:
+##    d_flag_vendor_tmp['vendorname'] = vendorname
+##    d_flag_vendor_tmp['l_flag'] = l_flag
+##    l_flag_vendor_tmp.append(d_flag_vendor_tmp)
 
  if l_flag_vendor_tmp:
   l_flag_vendor = json.dumps(l_flag_vendor_tmp)
